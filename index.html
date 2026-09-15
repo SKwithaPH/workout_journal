@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Workout Journal</title>
+  <!-- Tailwind CSS Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Dexie.js for Client-Side Storage -->
+  <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased pb-24">
+  
+  <!-- Loading Overlay -->
+  <div id="loading-overlay" class="fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center space-y-3">
+    <img src="https://i.giphy.com/CpgNjk2E54p7W.gif" alt="Clapping" class="w-48 h-48 object-cover rounded-xl shadow-2xl mb-4 border-2 border-amber-500/50 mx-auto" />
+  </div>
+
+  <!-- Header -->
+  <header class="bg-slate-900 border-b border-slate-800 p-3 sticky top-0 z-40 shadow-md">
+    <div class="max-w-md mx-auto flex justify-between items-center">
+      <div>
+        <h1 class="font-black text-amber-500 tracking-wider text-xs uppercase">Workout Journal</h1>
+        <div class="flex items-center space-x-2 mt-0.5">
+          <span class="text-[9px] font-mono text-slate-400">Strength & Conditioning System</span>
+          <span class="text-[9px] font-mono text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20" id="header-stopwatch">⏱ 00:00</span>
+        </div>
+      </div>
+      <button onclick="openProfileModal()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-400 px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1 shadow-sm">
+        <span>⚙️ Settings</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-md mx-auto p-4 space-y-4">
+    <!-- VIEW 1: LOGGER -->
+    <div id="view-logger" class="space-y-4">
+      <div>
+        <label class="block text-[10px] font-bold text-slate-400 mb-1 tracking-wider uppercase">PROGRAM CYCLE</label>
+        <select id="select-cycle" onchange="onCycleChange()" class="w-full bg-slate-900 text-slate-100 border border-slate-700 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:border-amber-500 shadow-inner"></select>
+      </div>
+
+      <!-- Dynamic Week Buttons -->
+      <div id="week-buttons"></div>
+      <!-- Day Buttons -->
+      <div class="grid grid-cols-6 gap-1.5" id="day-buttons"></div>
+      
+      <!-- Exercise Cards Container -->
+      <div id="exercise-cards" class="space-y-4"></div>
+
+      <!-- Workout Notes Input -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-1.5 shadow-lg">
+        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Workout Notes & Observations</label>
+        <textarea id="session-notes" placeholder="e.g. Felt explosive on main sets, supersets flowed well..." rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500"></textarea>
+      </div>
+
+      <!-- Save Session Button -->
+      <button onclick="saveSession()" id="btn-save-session" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-3 rounded-xl shadow-lg transition-colors text-sm uppercase tracking-wider">
+        LOG COMPLETED SESSION
+      </button>
+    </div>
+
+    <!-- VIEW 2: LIBRARY -->
+    <div id="view-library" class="hidden space-y-3">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+        <h2 class="font-bold text-slate-200 text-sm uppercase tracking-wider">Exercise Database</h2>
+        <button onclick="openAddExerciseModal()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-[10px] px-2.5 py-1 rounded-lg transition-all">+ Add Exercise</button>
+      </div>
+
+      <!-- Filters & Search -->
+      <div class="grid grid-cols-2 gap-2">
+        <input type="text" id="lib-search" oninput="renderLibrary()" placeholder="Search exercises..." class="bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500">
+        <select id="lib-cat-filter" onchange="renderLibrary()" class="bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500">
+          <option value="ALL">All Categories</option>
+          <option value="Lower Push">Lower Push</option>
+          <option value="Lower Pull">Lower Pull</option>
+          <option value="Upper Push">Upper Push</option>
+          <option value="Upper Pull">Upper Pull</option>
+          <option value="Olympic / Full Body">Olympic / Full Body</option>
+          <option value="Core">Core</option>
+          <option value="Cardio">Cardio</option>
+        </select>
+      </div>
+
+      <div id="library-container" class="space-y-2"></div>
+    </div>
+
+    <!-- VIEW 3: SIMPLIFIED CALENDAR HISTORY -->
+    <div id="view-history" class="hidden space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+        <button onclick="changeCalendarMonth(-1)" class="bg-slate-900 hover:bg-slate-800 border border-slate-800 px-3 py-1 rounded text-xs font-mono font-bold text-amber-500">◀ PREV</button>
+        <h2 id="calendar-month-label" class="text-xs font-mono font-black text-amber-400 uppercase tracking-wider">September 2026</h2>
+        <button onclick="changeCalendarMonth(1)" class="bg-slate-900 hover:bg-slate-800 border border-slate-800 px-3 py-1 rounded text-xs font-mono font-bold text-amber-500">NEXT ▶</button>
+      </div>
+
+      <!-- Calendar View -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-3 shadow-lg">
+        <div class="grid grid-cols-7 gap-1 text-center font-mono text-[10px] text-slate-500 font-bold border-b border-slate-800 pb-1">
+          <span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span>
+        </div>
+        <div id="calendar-grid" class="grid grid-cols-7 gap-1"></div>
+      </div>
+
+      <!-- Simplified Streamlined Log Detail Summary -->
+      <div id="history-detail-card" class="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2 shadow-lg">
+        <p class="text-xs text-slate-400 text-center py-2 font-mono">Select a logged date above to view session summary.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- POPUP MODAL: SETTINGS & DATA MANAGER -->
+  <div id="modal-profile" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-4 space-y-3 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+        <h3 class="font-black text-amber-400 text-xs uppercase tracking-wider">Settings & Data Manager</h3>
+        <button onclick="closeProfileModal()" class="text-slate-400 hover:text-slate-200 text-base font-bold">✕</button>
+      </div>
+      <div class="space-y-3">
+        <!-- Consolidated Data & Routine Manager -->
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2.5">
+          <span class="text-[10px] font-black text-amber-500 uppercase tracking-wider block border-b border-slate-800 pb-1">Data & Routine Management</span>
+          <p class="text-[10px] text-slate-400">Add routines additively without overwriting your current database history, or perform backups.</p>
+          
+          <div class="grid grid-cols-2 gap-2 pt-1">
+            <button onclick="exportDatabaseJSON()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-lg text-[10px] uppercase tracking-wider shadow-sm">Export Full Backup</button>
+            <label class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2 rounded-lg text-[10px] uppercase tracking-wider text-center cursor-pointer shadow-md">
+              Import / Add Routine <input type="file" id="import-routine-input" onchange="importRoutineAdditive(event)" accept=".json" class="hidden">
+            </label>
+          </div>
+          <div id="custom-cycles-manager" class="pt-2 border-t border-slate-800/80 space-y-1.5"></div>
+        </div>
+      </div>
+      <button onclick="closeProfileModal()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2.5 rounded-xl text-xs uppercase">Close</button>
+    </div>
+  </div>
+
+  <!-- POPUP MODAL: SUB/MODIFY EXERCISE FROM LIBRARY -->
+  <div id="modal-sub-exercise" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-4 space-y-3 shadow-2xl max-h-[85vh] flex flex-col">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+        <h3 class="font-black text-amber-400 text-xs uppercase tracking-wider">Substitute Exercise</h3>
+        <button onclick="closeSubExerciseModal()" class="text-slate-400 hover:text-slate-200 text-base font-bold">✕</button>
+      </div>
+      <input type="text" id="sub-search" oninput="renderSubExerciseList()" placeholder="Search library..." class="bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500">
+      <div id="sub-exercise-list" class="space-y-1.5 overflow-y-auto flex-1 pr-1"></div>
+      <button onclick="closeSubExerciseModal()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-xl text-xs uppercase">Cancel</button>
+    </div>
+  </div>
+
+  <!-- STREAMLINED FLOATING SMART REST TIMER WIDGET -->
+  <div id="rest-timer-widget" class="hidden fixed bottom-16 left-4 right-4 max-w-xs mx-auto bg-slate-900 border border-amber-500/80 text-slate-100 p-2.5 rounded-xl shadow-2xl flex justify-between items-center z-50">
+    <div class="flex items-center space-x-2">
+      <span class="text-amber-400 text-xs font-black">⏱</span>
+      <span id="rest-timer-display" class="font-mono font-black text-sm text-amber-400">02:00</span>
+      <span id="rest-timer-label" class="text-[9px] text-slate-400 uppercase font-mono">Rest</span>
+    </div>
+    <button onclick="stopRestTimer()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-[10px] px-2.5 py-1 rounded">Dismiss</button>
+  </div>
+
+  <!-- POPUP MODAL: EDIT WORKOUT SESSION METADATA -->
+  <div id="modal-edit-session" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-4 space-y-3 shadow-2xl">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+        <h3 class="font-black text-amber-400 text-xs uppercase tracking-wider">Edit Session Metadata</h3>
+        <button onclick="closeEditModal()" class="text-slate-400 hover:text-slate-200 text-base font-bold">✕</button>
+      </div>
+      <input type="hidden" id="edit-workout-id">
+      <div class="space-y-2.5 text-xs">
+        <div>
+          <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">Date</label>
+          <input type="date" id="edit-date" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-100 font-mono focus:outline-none focus:border-amber-500">
+        </div>
+        <div>
+          <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">Program Cycle</label>
+          <select id="edit-cycle" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-100 font-semibold focus:outline-none focus:border-amber-500"></select>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">Week Number</label>
+            <input type="number" id="edit-week" min="1" max="12" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-100 font-mono focus:outline-none focus:border-amber-500">
+          </div>
+          <div>
+            <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">Day</label>
+            <select id="edit-day" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-100 font-mono focus:outline-none focus:border-amber-500">
+              <option value="DAY_1">Day 1</option>
+              <option value="DAY_2">Day 2</option>
+              <option value="DAY_3">Day 3</option>
+              <option value="DAY_4">Day 4</option>
+              <option value="DAY_5">Day 5</option>
+              <option value="DAY_6">Day 6</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">Notes</label>
+          <textarea id="edit-notes" rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-100 focus:outline-none focus:border-amber-500" placeholder="Session notes..."></textarea>
+        </div>
+      </div>
+      <button onclick="submitEditSession()" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2.5 rounded-xl text-xs uppercase tracking-wider transition-all shadow-md">Save Changes</button>
+    </div>
+  </div>
+
+  <!-- POPUP MODAL: QUICK PLATE CALCULATOR -->
+  <div id="modal-plate-calc" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-4 space-y-3 shadow-2xl">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+        <h3 class="font-black text-amber-400 text-xs uppercase tracking-wider">Barbell Plate Calculator</h3>
+        <button onclick="closePlateModal()" class="text-slate-400 hover:text-slate-200 text-base font-bold">✕</button>
+      </div>
+      
+      <!-- Target Load & Quick Adjustments -->
+      <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-2">
+        <div class="flex justify-between items-center font-mono">
+          <span class="text-xs text-slate-400">Target Load:</span>
+          <span id="modal-plate-target-display" class="text-lg font-black text-amber-400">135 lbs</span>
+        </div>
+        <div class="grid grid-cols-4 gap-1 pt-1">
+          <button onclick="adjustPlateTarget(-10)" class="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-amber-400 text-xs font-mono font-bold py-1 rounded">-10</button>
+          <button onclick="adjustPlateTarget(-5)" class="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-amber-400 text-xs font-mono font-bold py-1 rounded">-5</button>
+          <button onclick="adjustPlateTarget(5)" class="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-amber-400 text-xs font-mono font-bold py-1 rounded">+5</button>
+          <button onclick="adjustPlateTarget(10)" class="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-amber-400 text-xs font-mono font-bold py-1 rounded">+10</button>
+        </div>
+      </div>
+
+      <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2">
+        <span id="modal-plate-summary" class="text-xs text-amber-400 font-mono font-bold block text-center"></span>
+        <div id="modal-plate-visual-rack" class="flex items-end justify-center space-x-1.5 py-2 min-h-[80px]"></div>
+        <div id="modal-plate-results" class="flex flex-wrap gap-1.5 pt-2 border-t border-slate-800 justify-center"></div>
+      </div>
+
+      <details class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-300">
+        <summary class="cursor-pointer font-bold text-amber-500 uppercase tracking-wider text-[10px]">Edit Plate Inventory Pairs</summary>
+        <div id="plate-inventory-inputs" class="grid grid-cols-4 gap-2 pt-2 text-center"></div>
+      </details>
+
+      <button onclick="closePlateModal()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-xl text-xs uppercase">Close</button>
+    </div>
+  </div>
+
+  <!-- POPUP MODAL: ADD EXERCISE -->
+  <div id="modal-add-exercise" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-4 space-y-3 shadow-2xl">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+        <h3 class="font-black text-amber-400 text-xs uppercase tracking-wider">Add Custom Exercise</h3>
+        <button onclick="closeAddExerciseModal()" class="text-slate-400 hover:text-slate-200 text-base font-bold">✕</button>
+      </div>
+      <div class="space-y-2 text-xs">
+        <div>
+          <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">Exercise Name</label>
+          <input type="text" id="new-ex-name" placeholder="e.g. Zercher Squat" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-100 focus:outline-none focus:border-amber-500">
+        </div>
+        <div>
+          <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">Category</label>
+          <select id="new-ex-cat" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-100 focus:outline-none focus:border-amber-500">
+            <option value="Lower Push">Lower Push</option>
+            <option value="Lower Pull">Lower Pull</option>
+            <option value="Upper Push">Upper Push</option>
+            <option value="Upper Pull">Upper Pull</option>
+            <option value="Lower Unilateral">Lower Unilateral</option>
+            <option value="Upper Unilateral">Upper Unilateral</option>
+            <option value="Core">Core</option>
+            <option value="Cardio">Cardio</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">Metric Type</label>
+          <select id="new-ex-metric" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-100 focus:outline-none focus:border-amber-500">
+            <option value="loaded">Loaded (Weight / Training Max)</option>
+            <option value="reps">Bodyweight / Reps (No TM)</option>
+          </select>
+        </div>
+        <div id="new-ex-tm-wrapper">
+          <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">Initial Training Max (lbs)</label>
+          <input type="number" id="new-ex-tm" placeholder="e.g. 185" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-100 focus:outline-none focus:border-amber-500">
+        </div>
+      </div>
+      <button onclick="submitNewExercise()" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2.5 rounded-xl text-xs uppercase tracking-wider transition-all shadow-md">Save Exercise</button>
+    </div>
+  </div>
+
+  <!-- Bottom Navigation -->
+  <nav class="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 py-2 z-40 shadow-lg">
+    <div class="max-w-md mx-auto grid grid-cols-3 text-center text-[10px] font-bold">
+      <button id="nav-logger" onclick="switchTab('logger')" class="text-amber-500 flex flex-col items-center space-y-1">
+        <span>WORKOUT</span>
+      </button>
+      <button id="nav-library" onclick="switchTab('library')" class="text-slate-400 flex flex-col items-center space-y-1">
+        <span>EXERCISES</span>
+      </button>
+      <button id="nav-history" onclick="switchTab('history')" class="text-slate-400 flex flex-col items-center space-y-1">
+        <span>HISTORY</span>
+      </button>
+    </div>
+  </nav>
+
+  <script>
+    const localDb = new Dexie('WorkoutJournalApp');
+    localDb.version(2).stores({
+      exercises: 'exerciseid, exercisename, category, trainingmax, est1rm, metrictype',
+      templates: '++id, templateid, cycleid, dayid, exerciseid, movementrole, basesets, basereps, dayname, coachingnotes',
+      cycleWeeks: 'weeknum, intensitymult, volumemult, targetrpe',
+      workoutLogs: 'workoutid, datestr, cycleid, weeknum, templateid, totalvolume, durationmin, notes',
+      setLogs: '++id, setid, workoutid, exerciseid, setnum, weightlbs, repscompleted, targetrpe, actualrpe, ispr',
+      profile: 'key, value',
+      plateInventory: 'weight, pairs'
+    });
+
+    const BARBELL_EXERCISES = [
+      'EX_SQ_BACK', 'EX_SQ_FRONT', 'EX_BP_FLAT', 'EX_DL_CONV', 'EX_OHP',
+      'EX_CLEAN', 'EX_SNATCH', 'EX_CLEAN_JERK', 'EX_PUSH_PRESS', 'EX_THRUSTER', 'EX_BB_ROW'
+    ];
+
+    const CORE_CYCLES = ['CYCLE_HYBRID'];
+
+    let db = { exercises: [], templates: [], cycleWeeks: [] };
+    let state = { cycleId: 'CYCLE_HYBRID', weekNum: 1, dayId: 'DAY_1', calYear: 2026, calMonth: 8, targetModalWeight: 135, activeActiveInputId: null, activeSubTemplateId: null };
+    let dynamicSetCounts = {};
+    let restTimerInterval = null;
+    let restSecondsRemaining = 120;
+    
+    let sessionSecondsElapsed = 0;
+    let stopwatchInterval = null;
+
+    let userPlates = [
+      { weight: 45, pairs: 2, color: 'border-red-500/80 bg-red-950/40 text-red-400', height: 'h-20' },
+      { weight: 35, pairs: 1, color: 'border-blue-500/80 bg-blue-950/40 text-blue-400', height: 'h-16' },
+      { weight: 25, pairs: 2, color: 'border-amber-500/80 bg-amber-950/40 text-amber-400', height: 'h-14' },
+      { weight: 15, pairs: 1, color: 'border-purple-500/80 bg-purple-950/40 text-purple-400', height: 'h-13' },
+      { weight: 10, pairs: 2, color: 'border-emerald-500/80 bg-emerald-950/40 text-emerald-400', height: 'h-12' },
+      { weight: 5,  pairs: 2, color: 'border-slate-400/80 bg-slate-800/60 text-slate-200', height: 'h-10' },
+      { weight: 2.5, pairs: 2, color: 'border-slate-600/80 bg-slate-900/80 text-slate-400', height: 'h-8' }
+    ];
+
+    async function seedInitialData() {
+      const exCount = await localDb.exercises.count();
+      if (exCount === 0) {
+        await localDb.exercises.bulkAdd([
+          { exerciseid: 'EX_SQ_BACK', exercisename: 'Barbell Back Squat', category: 'Lower Push', est1rm: 305.0, trainingmax: 255.0, metrictype: 'loaded' },
+          { exerciseid: 'EX_SQ_FRONT', exercisename: 'Barbell Front Squat', category: 'Lower Push', est1rm: 135.0, trainingmax: 115.0, metrictype: 'loaded' },
+          { exerciseid: 'EX_BP_FLAT', exercisename: 'Barbell Bench Press', category: 'Upper Push', est1rm: 185.0, trainingmax: 155.0, metrictype: 'loaded' },
+          { exerciseid: 'EX_DL_CONV', exercisename: 'Conventional Deadlift', category: 'Lower Pull', est1rm: 325.0, trainingmax: 275.0, metrictype: 'loaded' },
+          { exerciseid: 'EX_OHP', exercisename: 'Overhead Press', category: 'Upper Push', est1rm: 130.0, trainingmax: 110.0, metrictype: 'loaded' },
+          { exerciseid: 'EX_BSS', exercisename: 'Bulgarian Split Squat', category: 'Lower Unilateral', est1rm: 75.0, trainingmax: 60.0, metrictype: 'loaded' },
+          { exerciseid: 'EX_SA_DB_ROW', exercisename: 'Single-Arm DB Row', category: 'Upper Unilateral', est1rm: 65.0, trainingmax: 53.0, metrictype: 'loaded' },
+          { exerciseid: 'EX_PULLUP', exercisename: 'Pull-ups', category: 'Upper Pull', est1rm: 0.0, trainingmax: 0.0, metrictype: 'reps' },
+          { exerciseid: 'EX_PALLOF', exercisename: 'Band Pallof Press', category: 'Core / Anti-Rotation', est1rm: 0.0, trainingmax: 0.0, metrictype: 'reps' },
+          { exerciseid: 'EX_WALL_BALL', exercisename: 'Wall Balls', category: 'Full Body / Conditioning', est1rm: 25.0, trainingmax: 20.0, metrictype: 'loaded' },
+          { exerciseid: 'EX_HANG_LEG_RAISE', exercisename: 'Hanging Leg Raises', category: 'Core Anti-Extension', est1rm: 0.0, trainingmax: 0.0, metrictype: 'reps' },
+          { exerciseid: 'EX_STEP_UP', exercisename: 'Box Step-Ups', category: 'Lower Unilateral', est1rm: 60.0, trainingmax: 45.0, metrictype: 'loaded' },
+          { exerciseid: 'EX_SUITCASE_CARRY', exercisename: 'Suitcase Carries', category: 'Unilateral Carry', est1rm: 65.0, trainingmax: 50.0, metrictype: 'loaded' },
+          { exerciseid: 'EX_COPENHAGEN', exercisename: 'Copenhagen Plank', category: 'Core / Adductors', est1rm: 0.0, trainingmax: 0.0, metrictype: 'reps' },
+          { exerciseid: 'EX_THRUSTER', exercisename: 'Barbell Thruster', category: 'Full Body / Conditioning', est1rm: 115.0, trainingmax: 95.0, metrictype: 'loaded' },
+          { exerciseid: 'EX_ROWER', exercisename: 'Concept2 Rowing', category: 'Cardio', est1rm: 0.0, trainingmax: 0.0, metrictype: 'reps' },
+          { exerciseid: 'EX_ROT_SLAM', exercisename: 'Rotational Ball Slams', category: 'Explosive / Core', est1rm: 25.0, trainingmax: 18.0, metrictype: 'loaded' }
+        ]);
+      } else {
+        await localDb.exercises.filter(ex => !ex.metrictype).modify(ex => {
+          ex.metrictype = (ex.trainingmax && ex.trainingmax > 0) ? 'loaded' : 'reps';
+        });
+      }
+
+      const hybridCount = await localDb.templates.where('cycleid').equals('CYCLE_HYBRID').count();
+      if (hybridCount === 0) {
+        await localDb.templates.bulkAdd([
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_1', dayid: 'DAY_1', dayname: 'Lower Push & Anti-Rotation', exerciseid: 'EX_SQ_BACK', basesets: 3, basereps: '5', movementrole: 'Main Lift', coachingnotes: 'Drive knees out, maintain upright thoracic posture.' },
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_1', dayid: 'DAY_1', dayname: 'Lower Push & Anti-Rotation', exerciseid: 'EX_BSS', basesets: 3, basereps: '8', movementrole: 'Superset A1', coachingnotes: 'Keep torso upright and drive through front heel.' },
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_1', dayid: 'DAY_1', dayname: 'Lower Push & Anti-Rotation', exerciseid: 'EX_PALLOF', basesets: 3, basereps: '10', movementrole: 'Superset A2', coachingnotes: 'Resist rotation firmly at end range.' },
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_1', dayid: 'DAY_1', dayname: 'Lower Push & Anti-Rotation', exerciseid: 'EX_WALL_BALL', basesets: 3, basereps: '15', movementrole: 'Superset B1', coachingnotes: 'Full depth squat, explosive hip extension.' },
+
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_2', dayid: 'DAY_2', dayname: 'Upper Push/Pull & Anti-Extension', exerciseid: 'EX_BP_FLAT', basesets: 3, basereps: '5', movementrole: 'Main Lift', coachingnotes: 'Retract scapula, leg drive, touch lower sternum.' },
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_2', dayid: 'DAY_2', dayname: 'Upper Push/Pull & Anti-Extension', exerciseid: 'EX_SA_DB_ROW', basesets: 3, basereps: '8', movementrole: 'Superset A1', coachingnotes: 'Pull elbow toward hip, control eccentric.' },
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_2', dayid: 'DAY_2', dayname: 'Upper Push/Pull & Anti-Extension', exerciseid: 'EX_PULLUP', basesets: 3, basereps: 'Max', movementrole: 'Superset A2', coachingnotes: 'Full hang at bottom, chest to bar.' },
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_2', dayid: 'DAY_2', dayname: 'Upper Push/Pull & Anti-Extension', exerciseid: 'EX_HANG_LEG_RAISE', basesets: 3, basereps: '12', movementrole: 'Superset B1', coachingnotes: 'Avoid swinging; control pelvis tilt.' },
+
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_3', dayid: 'DAY_3', dayname: 'Lower Pull & Unilateral Stability', exerciseid: 'EX_DL_CONV', basesets: 3, basereps: '5', movementrole: 'Main Lift', coachingnotes: 'Lats engaged, flat lower back, wedge into bar.' },
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_3', dayid: 'DAY_3', dayname: 'Lower Pull & Unilateral Stability', exerciseid: 'EX_STEP_UP', basesets: 3, basereps: '10', movementrole: 'Superset A1', coachingnotes: 'Drive through box without using back leg push.' },
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_3', dayid: 'DAY_3', dayname: 'Lower Pull & Unilateral Stability', exerciseid: 'EX_SUITCASE_CARRY', basesets: 3, basereps: '50 ft', movementrole: 'Superset A2', coachingnotes: 'Keep shoulders level, prevent lateral lean.' },
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_3', dayid: 'DAY_3', dayname: 'Lower Pull & Unilateral Stability', exerciseid: 'EX_COPENHAGEN', basesets: 3, basereps: '30 sec', movementrole: 'Superset B1', coachingnotes: 'Lift hips high, squeeze adductors.' },
+
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_4', dayid: 'DAY_4', dayname: 'Full Body & Aerobic Conditioning', exerciseid: 'EX_OHP', basesets: 3, basereps: '5', movementrole: 'Main Lift', coachingnotes: 'Brace core and glutes, press straight overhead.' },
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_4', dayid: 'DAY_4', dayname: 'Full Body & Aerobic Conditioning', exerciseid: 'EX_THRUSTER', basesets: 3, basereps: '8', movementrole: 'Superset A1', coachingnotes: 'Seamless transition from squat dip to press.' },
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_4', dayid: 'DAY_4', dayname: 'Full Body & Aerobic Conditioning', exerciseid: 'EX_ROWER', basesets: 4, basereps: '500m', movementrole: 'Superset A2', coachingnotes: 'Legs, body, arms drive; controlled recovery.' },
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_4', dayid: 'DAY_4', dayname: 'Full Body & Aerobic Conditioning', exerciseid: 'EX_ROT_SLAM', basesets: 3, basereps: '10', movementrole: 'Superset B1', coachingnotes: 'Pivot back foot, rotate through thoracic spine.' },
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_5', dayid: 'DAY_5', dayname: 'Base Run', exerciseid: 'ACT_RUN_ZONE2', basesets: 1, basereps: '30 min', movementrole: 'Cardio', coachingnotes: 'Keep pace strictly conversational (Zone 2).' },
+          { cycleid: 'CYCLE_HYBRID', templateid: 'DAY_6', dayid: 'DAY_6', dayname: 'Tempo Run', exerciseid: 'ACT_RUN_TEMPO', basesets: 1, basereps: '20 min', movementrole: 'Cardio', coachingnotes: 'Comfortably hard pace (Zone 3/4).' }
+        ]);
+      }
+
+      if ((await localDb.cycleWeeks.count()) === 0) {
+        await localDb.cycleWeeks.bulkAdd([
+          { weeknum: 1, intensitymult: 0.90, volumemult: 1.0, targetrpe: '7 – 8' },
+          { weeknum: 2, intensitymult: 0.95, volumemult: 1.0, targetrpe: '8' },
+          { weeknum: 3, intensitymult: 1.00, volumemult: 1.0, targetrpe: '9 – 10' },
+          { weeknum: 4, intensitymult: 0.70, volumemult: 0.6, targetrpe: '6' }
+        ]);
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      ['logger', 'library', 'history'].forEach(tab => {
+        const btn = document.getElementById(`nav-${tab}`);
+        if (btn) btn.addEventListener('click', (e) => { e.preventDefault(); switchTab(tab); });
+      });
+      await seedInitialData();
+      await loadAppData();
+      startWorkoutStopwatch();
+    });
+
+    function startWorkoutStopwatch() {
+      if (stopwatchInterval) clearInterval(stopwatchInterval);
+      stopwatchInterval = setInterval(() => {
+        sessionSecondsElapsed++;
+        const mins = Math.floor(sessionSecondsElapsed / 60);
+        const secs = sessionSecondsElapsed % 60;
+        const el = document.getElementById('header-stopwatch');
+        if (el) el.innerText = `⏱ ${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+      }, 1000);
+    }
+
+    async function loadAppData() {
+      const loadingOverlay = document.getElementById('loading-overlay');
+      try {
+        db.exercises = await localDb.exercises.toArray();
+        db.templates = await localDb.templates.toArray();
+        db.cycleWeeks = await localDb.cycleWeeks.toArray();
+
+        const savedPlates = await localDb.plateInventory.toArray();
+        if (savedPlates.length > 0) {
+          savedPlates.forEach(sp => {
+            const pObj = userPlates.find(up => up.weight === sp.weight);
+            if (pObj) pObj.pairs = sp.pairs;
+          });
+        }
+
+        const uniqueCycles = [...new Set((db.templates || []).map(t => t.cycleid).filter(Boolean))];
+        if (!uniqueCycles.includes(state.cycleId)) {
+          state.cycleId = uniqueCycles[0] || 'CYCLE_HYBRID';
+        }
+
+        const lastLog = await localDb.workoutLogs.orderBy('datestr').last();
+        if (lastLog) {
+          state.cycleId = lastLog.cycleid || state.cycleId;
+          const maxWeeks = getActiveCycleWeekCount();
+          let nextWeek = lastLog.weeknum || 1;
+          let nextDayNum = parseInt(String(lastLog.templateid || '').replace(/[^0-9]/g, '')) + 1;
+
+          if (nextDayNum > 6) {
+            nextDayNum = 1;
+            nextWeek++;
+            if (nextWeek > maxWeeks) nextWeek = 1;
+          }
+          state.weekNum = nextWeek;
+          state.dayId = `DAY_${nextDayNum}`;
+        }
+
+        updateCycleDropdownOptions();
+
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+        renderWeekButtons();
+        renderDayButtons();
+        renderWorkoutDay();
+      } catch (err) {
+        console.error('Error loading data:', err);
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+      }
+    }
+
+    async function resetRoutineToDefault() {
+      if (confirm('Reset current cycle templates back to factory default? Any custom exercise substitutions made on this routine will be reset.')) {
+        await localDb.templates.clear();
+        db.templates = [];
+        await seedInitialData();
+        db.templates = await localDb.templates.toArray();
+        renderWorkoutDay();
+        alert('Routine reset to default successfully!');
+      }
+    }
+
+    function updateCycleDropdownOptions() {
+      const cycleSelect = document.getElementById('select-cycle');
+      const editCycleSelect = document.getElementById('edit-cycle');
+      if (!cycleSelect) return;
+
+      const uniqueCycles = [...new Set((db.templates || []).map(t => t.cycleid).filter(Boolean))];
+      if (uniqueCycles.length === 0) uniqueCycles.push('CYCLE_HYBRID');
+
+      const cycleLabels = {
+        'CYCLE_HYBRID': 'Hybrid Block'
+      };
+
+      const optionsHtml = uniqueCycles.map(cId => {
+        const label = cycleLabels[cId] || cId.replace('CYCLE_', '').replace(/_/g, ' ');
+        return `<option value="${cId}">${label}</option>`;
+      }).join('');
+
+      cycleSelect.innerHTML = optionsHtml;
+      if (editCycleSelect) editCycleSelect.innerHTML = optionsHtml;
+
+      if (uniqueCycles.includes(state.cycleId)) {
+        cycleSelect.value = state.cycleId;
+      } else {
+        state.cycleId = uniqueCycles[0];
+        cycleSelect.value = state.cycleId;
+      }
+      renderCustomCyclesManager();
+    }
+
+    function renderCustomCyclesManager() {
+      const container = document.getElementById('custom-cycles-manager');
+      if (!container) return;
+      const uniqueCycles = [...new Set((db.templates || []).map(t => t.cycleid).filter(Boolean))];
+      const customCycles = uniqueCycles.filter(c => !CORE_CYCLES.includes(c));
+
+      let html = `
+        <div class="flex items-center justify-between pt-1">
+          <span class="text-[9px] font-bold text-slate-400 uppercase block">Reset Defaults</span>
+          <button onclick="resetRoutineToDefault()" class="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 font-bold px-2 py-1 rounded text-[9px] uppercase">Reset Current Routine</button>
+        </div>
+      `;
+
+      if (customCycles.length > 0) {
+        html += `
+          <span class="text-[9px] font-bold text-slate-400 uppercase block pt-2">Custom Routines</span>
+          <div class="space-y-1 pt-1">
+            ${customCycles.map(cId => `
+              <div class="flex items-center justify-between bg-slate-900 border border-slate-800 px-2 py-1.5 rounded text-[10px]">
+                <span class="font-mono text-amber-400 truncate">${cId}</span>
+                <button onclick="deleteCustomCycle('${cId}')" class="bg-red-600 hover:bg-red-700 text-white font-bold px-2 py-0.5 rounded text-[9px] uppercase">Delete</button>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+      container.innerHTML = html;
+    }
+
+    async function deleteCustomCycle(cId) {
+      if (CORE_CYCLES.includes(cId)) {
+        alert('Cannot delete core default blocks.');
+        return;
+      }
+      if (confirm(`Are you sure you want to delete custom routine ${cId}?`)) {
+        const templatesToDelete = await localDb.templates.where('cycleid').equals(cId).toArray();
+        const exerciseIdsInRoutine = [...new Set(templatesToDelete.map(t => t.exerciseid))];
+
+        await localDb.templates.where('cycleid').equals(cId).delete();
+
+        const remainingTemplates = await localDb.templates.toArray();
+        const activeExerciseIds = new Set(remainingTemplates.map(t => t.exerciseid));
+
+        for (const exId of exerciseIdsInRoutine) {
+          if (!activeExerciseIds.has(exId) && !exId.startsWith('EX_SQ_') && !exId.startsWith('EX_BP_') && !exId.startsWith('EX_DL_')) {
+            await localDb.exercises.where('exerciseid').equalsIgnoreCase(exId).delete();
+          }
+        }
+
+        db.templates = await localDb.templates.toArray();
+        db.exercises = await localDb.exercises.toArray();
+        alert(`Routine ${cId} and its unused custom exercises deleted.`);
+        state.cycleId = 'CYCLE_HYBRID';
+        updateCycleDropdownOptions();
+        renderWeekButtons();
+        renderDayButtons();
+        renderWorkoutDay();
+      }
+    }
+
+    function switchTab(tab) {
+      ['logger', 'library', 'history'].forEach(v => {
+        const el = document.getElementById(`view-${v}`);
+        if (el) el.classList.toggle('hidden', v !== tab);
+        const btn = document.getElementById(`nav-${v}`);
+        if (btn) btn.className = (v === tab) ? 'text-amber-500 flex flex-col items-center space-y-1' : 'text-slate-400 flex flex-col items-center space-y-1';
+      });
+      if (tab === 'library') renderLibrary();
+      if (tab === 'history') {
+        renderCalendarHistory();
+      }
+    }
+
+    function onCycleChange() {
+      state.cycleId = document.getElementById('select-cycle').value;
+      state.weekNum = 1;
+      state.dayId = 'DAY_1';
+      dynamicSetCounts = {};
+      renderWeekButtons();
+      renderDayButtons();
+      renderWorkoutDay();
+    }
+
+    function selectWeek(w) { state.weekNum = w; dynamicSetCounts = {}; renderWeekButtons(); renderDayButtons(); renderWorkoutDay(); }
+    function selectDay(d) { state.dayId = d; dynamicSetCounts = {}; renderDayButtons(); renderWorkoutDay(); }
+
+    function getActiveCycleWeekCount() {
+      if (state.cycleId === 'CYCLE_6WK_RECON') return 6;
+      if (CORE_CYCLES.includes(state.cycleId)) return 4;
+      
+      const cycleTemplates = (db.templates || []).filter(t => String(t.cycleid).toUpperCase() === String(state.cycleId).toUpperCase());
+      const maxDayNum = cycleTemplates.reduce((max, t) => {
+        const dNum = parseInt(String(t.templateid || t.dayid || '').replace(/[^0-9]/g, '')) || 1;
+        return Math.max(max, dNum);
+      }, 4);
+      return Math.max(4, maxDayNum);
+    }
+
+    function renderWeekButtons() {
+      const container = document.getElementById('week-buttons');
+      if (!container) return;
+      
+      const totalWeeks = getActiveCycleWeekCount();
+      container.className = `grid grid-cols-${Math.min(totalWeeks, 6)} gap-1.5`;
+
+      let weeksHtml = '';
+      for (let w = 1; w <= totalWeeks; w++) {
+        const active = w === state.weekNum;
+        const cls = active 
+          ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-md shadow-amber-500/20' 
+          : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700';
+        weeksHtml += `<button onclick="selectWeek(${w})" class="py-2 text-[10px] border rounded-lg font-mono font-bold ${cls}">W${w}</button>`;
+      }
+      container.innerHTML = weeksHtml;
+    }
+
+    function renderDayButtons() {
+      const container = document.getElementById('day-buttons');
+      if (!container) return;
+
+      const cycleTemplates = (db.templates || []).filter(t => String(t.cycleid).toUpperCase() === String(state.cycleId).toUpperCase());
+      const availableDays = [...new Set(cycleTemplates.map(t => String(t.templateid || t.dayid || '').toUpperCase()).filter(Boolean))];
+
+      let days = [];
+      if (CORE_CYCLES.includes(state.cycleId)) {
+        days = [
+          { id: 'DAY_1', label: 'D1' },
+          { id: 'DAY_2', label: 'D2' },
+          { id: 'DAY_3', label: 'D3' },
+          { id: 'DAY_4', label: 'D4' },
+          { id: 'DAY_5', label: 'D5 (Run)' },
+          { id: 'DAY_6', label: 'D6 (Run)' }
+        ];
+      } else if (availableDays.length > 0) {
+        days = availableDays.sort().map(dId => ({ id: dId, label: dId.replace('DAY_', 'D') }));
+      } else {
+        days = [
+          { id: 'DAY_1', label: 'D1' },
+          { id: 'DAY_2', label: 'D2' },
+          { id: 'DAY_3', label: 'D3' },
+          { id: 'DAY_4', label: 'D4' },
+          { id: 'DAY_5', label: 'D5' },
+          { id: 'DAY_6', label: 'D6' }
+        ];
+      }
+
+      container.className = `grid grid-cols-${Math.min(days.length, 6)} gap-1.5`;
+      container.innerHTML = days.map((d) => {
+        const active = d.id === state.dayId;
+        const cls = active ? 'bg-amber-500 text-slate-950 font-black border-amber-500 shadow-md shadow-amber-500/20' : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200';
+        return `<button onclick="selectDay('${d.id}')" class="py-1.5 text-[9px] border rounded-lg font-mono font-bold ${cls}">${d.label}</button>`;
+      }).join('');
+    }
+
+    function handleSetCheck(checkboxEl, isMainLift, isFinalExerciseInGroup) {
+      const row = checkboxEl.closest('.grid');
+      if (!row) return;
+      if (checkboxEl.checked) {
+        if (isMainLift) {
+          startRestTimer(120, 'Main Lift Rest (120s)');
+        } else if (isFinalExerciseInGroup) {
+          startRestTimer(60, 'Superset Rest (60s)');
+        }
+      }
+    }
+
+    function startRestTimer(seconds, labelText) {
+      restSecondsRemaining = seconds;
+      const widget = document.getElementById('rest-timer-widget');
+      document.getElementById('rest-timer-label').innerText = labelText;
+      widget.classList.remove('hidden');
+      if (restTimerInterval) clearInterval(restTimerInterval);
+
+      updateRestTimerDisplay();
+      restTimerInterval = setInterval(() => {
+        restSecondsRemaining--;
+        updateRestTimerDisplay();
+        if (restSecondsRemaining <= 0) {
+          clearInterval(restTimerInterval);
+          widget.classList.add('hidden');
+          playRestTimerAlert();
+        }
+      }, 1000);
+    }
+
+    function playRestTimerAlert() {
+      if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.4);
+      } catch (e) {
+        console.log('AudioContext not allowed or supported:', e);
+      }
+    }
+
+    function updateRestTimerDisplay() {
+      const mins = Math.floor(restSecondsRemaining / 60);
+      const secs = restSecondsRemaining % 60;
+      document.getElementById('rest-timer-display').innerText = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+    }
+
+    function stopRestTimer() {
+      if (restTimerInterval) clearInterval(restTimerInterval);
+      document.getElementById('rest-timer-widget').classList.add('hidden');
+    }
+
+    function openSubExerciseModal(templateId) {
+      state.activeSubTemplateId = templateId;
+      document.getElementById('sub-search').value = '';
+      renderSubExerciseList();
+      document.getElementById('modal-sub-exercise').classList.remove('hidden');
+    }
+
+    function closeSubExerciseModal() {
+      document.getElementById('modal-sub-exercise').classList.add('hidden');
+      state.activeSubTemplateId = null;
+    }
+
+    function renderSubExerciseList() {
+      const container = document.getElementById('sub-exercise-list');
+      const search = (document.getElementById('sub-search')?.value || '').toLowerCase();
+      if (!container) return;
+
+      const filtered = (db.exercises || []).filter(ex => (ex.exercisename || '').toLowerCase().includes(search));
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<p class="text-xs text-slate-500 text-center py-3">No exercises found.</p>';
+        return;
+      }
+
+      container.innerHTML = filtered.map(ex => `
+        <div onclick="substituteExerciseInTemplate('${ex.exerciseid}')" class="bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/50 p-2.5 rounded-xl cursor-pointer flex justify-between items-center transition-all">
+          <div>
+            <span class="font-bold text-slate-200 text-xs block">${ex.exercisename}</span>
+            <span class="text-[9px] text-amber-500/80 font-mono">${ex.category || 'General'}</span>
+          </div>
+          <span class="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20">Select</span>
+        </div>
+      `).join('');
+    }
+
+    async function substituteExerciseInTemplate(newExId) {
+      if (!state.activeSubTemplateId) return;
+      await localDb.templates.update(state.activeSubTemplateId, { exerciseid: newExId });
+      db.templates = await localDb.templates.toArray();
+      closeSubExerciseModal();
+      renderWorkoutDay();
+    }
+
+    async function exportDatabaseJSON() {
+      try {
+        const exportData = {
+          exercises: await localDb.exercises.toArray(),
+          templates: await localDb.templates.toArray(),
+          cycleWeeks: await localDb.cycleWeeks.toArray(),
+          workoutLogs: await localDb.workoutLogs.toArray(),
+          setLogs: await localDb.setLogs.toArray(),
+          plateInventory: await localDb.plateInventory.toArray()
+        };
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", `workout_journal_backup_${new Date().toISOString().split('T')[0]}.json`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+      } catch (err) {
+        alert('Failed to export backup.');
+      }
+    }
+
+    async function importRoutineAdditive(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async function(e) {
+        try {
+          const imported = JSON.parse(e.target.result);
+          
+          await localDb.transaction('rw', [localDb.exercises, localDb.templates, localDb.cycleWeeks, localDb.workoutLogs, localDb.plateInventory], async () => {
+            if (imported.templates && Array.isArray(imported.templates)) {
+              for (const t of imported.templates) {
+                await localDb.templates.put(t);
+              }
+            }
+            if (imported.exercises && Array.isArray(imported.exercises)) {
+              for (const ex of imported.exercises) {
+                if (!ex.metrictype) ex.metrictype = (ex.trainingmax && ex.trainingmax > 0) ? 'loaded' : 'reps';
+                await localDb.exercises.put(ex);
+              }
+            }
+            if (imported.cycleWeeks && Array.isArray(imported.cycleWeeks)) {
+              for (const cw of imported.cycleWeeks) {
+                await localDb.cycleWeeks.put(cw);
+              }
+            }
+            if (imported.workoutLogs && Array.isArray(imported.workoutLogs)) {
+              for (const wl of imported.workoutLogs) {
+                await localDb.workoutLogs.put(wl);
+              }
+            }
+          });
+
+          db.templates = await localDb.templates.toArray();
+          db.exercises = await localDb.exercises.toArray();
+          db.cycleWeeks = await localDb.cycleWeeks.toArray();
+          alert('Routines/Data successfully added/merged additively without losing history!');
+          updateCycleDropdownOptions();
+          renderWeekButtons();
+          renderDayButtons();
+          renderWorkoutDay();
+          closeProfileModal();
+        } catch (err) {
+          console.error('Additive import error:', err);
+          alert('Error parsing JSON file.');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function addExtraSet(index) {
+      if (!dynamicSetCounts[index]) {
+        const item = getCurrentDayExercises()[index];
+        const weekData = (db.cycleWeeks || []).find(w => parseInt(w.weeknum) === state.weekNum) || { volumemult: 1 };
+        const baseSets = parseInt(item.basesets) || 3;
+        const volumeMult = parseFloat(weekData.volumemult) || 1;
+        dynamicSetCounts[index] = Math.max(1, Math.round(baseSets * volumeMult)) + 1;
+      } else {
+        dynamicSetCounts[index]++;
+      }
+      renderWorkoutDay();
+    }
+
+    function removeExtraSet(index) {
+      const item = getCurrentDayExercises()[index];
+      const weekData = (db.cycleWeeks || []).find(w => parseInt(w.weeknum) === state.weekNum) || { volumemult: 1 };
+      const baseSets = parseInt(item.basesets) || 3;
+      const volumeMult = parseFloat(weekData.volumemult) || 1;
+      const defaultAdjustedSets = Math.max(1, Math.round(baseSets * volumeMult));
+
+      const currentCount = dynamicSetCounts[index] || defaultAdjustedSets;
+      if (currentCount > defaultAdjustedSets) {
+        dynamicSetCounts[index] = currentCount - 1;
+        renderWorkoutDay();
+      }
+    }
+
+    function getCurrentDayExercises() {
+      return (db.templates || []).filter(t => {
+        const tCycle = String(t.cycleid || '').trim().toUpperCase();
+        const tDay = String(t.templateid || t.dayid || '').trim().toUpperCase();
+        const activeCycle = String(state.cycleId || '').trim().toUpperCase();
+        const matchesCycle = tCycle === activeCycle;
+        const matchesDay = tDay === String(state.dayId).toUpperCase();
+        return matchesCycle && matchesDay;
+      });
+    }
+
+    function renderWorkoutDay() {
+      const dayExercises = getCurrentDayExercises();
+      const container = document.getElementById('exercise-cards');
+      if (!container) return;
+      if (dayExercises.length === 0) {
+        container.innerHTML = `<p class="text-xs text-amber-400 p-3 bg-slate-900 border border-slate-800 rounded-xl text-center">No exercises programmed for this day in cycle <strong>${state.cycleId}</strong>.</p>`;
+        return;
+      }
+
+      const isCardioDay = CORE_CYCLES.includes(state.cycleId) && (state.dayId === 'DAY_5' || state.dayId === 'DAY_6');
+      if (isCardioDay) {
+        container.innerHTML = dayExercises.map((item, idx) => renderSingleExerciseCard(item, idx, 'Cardio', 'border-slate-800 bg-slate-900', false, false)).join('');
+        return;
+      }
+
+      const mainLifts = dayExercises.map((item, idx) => ({ item, idx })).filter(x => String(x.item.movementrole || '').toLowerCase().includes('main') || String(x.item.movementrole || '').toLowerCase().includes('hinge'));
+      const supersets = dayExercises.map((item, idx) => ({ item, idx })).filter(x => !String(x.item.movementrole || '').toLowerCase().includes('main') && !String(x.item.movementrole || '').toLowerCase().includes('hinge'));
+
+      let cardsHtml = '';
+      mainLifts.forEach(obj => {
+        cardsHtml += renderSingleExerciseCard(obj.item, obj.idx, obj.item.movementrole || 'Main Lift', 'border-amber-500/40 bg-slate-900', true, false);
+      });
+
+      if (supersets.length > 0) {
+        cardsHtml += `
+          <div class="border-t border-slate-800 pt-3 mt-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-black text-amber-400 uppercase tracking-wider bg-amber-500/10 px-2.5 py-1 rounded border border-amber-500/20">Superset</span>
+            </div>
+        `;
+        supersets.forEach((obj, sIdx) => {
+          const isFinalInSuperset = (sIdx === supersets.length - 1);
+          cardsHtml += renderSingleExerciseCard(obj.item, obj.idx, obj.item.movementrole || 'Accessory', 'border-slate-800 bg-slate-900/90', false, isFinalInSuperset);
+        });
+        cardsHtml += `</div>`;
+      }
+
+      container.innerHTML = cardsHtml;
+    }
+
+    function renderSingleExerciseCard(item, index, roleBadgeText, cardClass, isMainLiftCard, isFinalInSuperset) {
+      const itemExId = String(item.exerciseid || '').trim().toUpperCase();
+      const exObj = (db.exercises || []).find(e => String(e.exerciseid).toUpperCase() === itemExId) || {};
+      const exName = exObj.exercisename || item.dayname || itemExId;
+      const coachingNotes = item.coachingnotes || '';
+
+      const isBarbell = BARBELL_EXERCISES.includes(itemExId);
+      const isCoreBlockCardio = CORE_CYCLES.includes(state.cycleId) && (state.dayId === 'DAY_5' || state.dayId === 'DAY_6');
+      const isCardio = isCoreBlockCardio || itemExId.startsWith('ACT_');
+      const isRepsOnly = exObj.metrictype === 'reps' || (!isBarbell && (exObj.trainingmax || 0) === 0);
+
+      const weekData = (db.cycleWeeks || []).find(w => parseInt(w.weeknum) === state.weekNum) || { intensitymult: 1, volumemult: 1, targetrpe: '8' };
+
+      if (isCardio) {
+        return `
+          <div class="border rounded-xl p-4 space-y-3 shadow-lg ${cardClass}" data-ex-id="${itemExId}">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+              <div>
+                <h3 class="font-black text-amber-400 text-sm uppercase tracking-wider">${exName}</h3>
+                <p class="text-[11px] text-slate-400 font-mono mt-0.5">${coachingNotes || 'Cardio Workout'}</p>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2 pt-1">
+              <div>
+                <label class="block text-[9px] font-bold text-slate-400 uppercase mb-1">Time (min)</label>
+                <input type="number" id="weight_${index}_1" placeholder="30" class="w-full bg-slate-950 border border-slate-800 rounded p-2 text-center font-mono font-bold text-xs text-slate-100 focus:border-amber-500">
+              </div>
+              <div>
+                <label class="block text-[9px] font-bold text-slate-400 uppercase mb-1">Dist (mi)</label>
+                <input type="number" step="0.1" id="reps_${index}_1" placeholder="3.1" class="w-full bg-slate-950 border border-slate-800 rounded p-2 text-center font-mono font-bold text-xs text-slate-100 focus:border-amber-500">
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      const baseSets = parseInt(item.basesets) || 3;
+      const baseReps = item.basereps || '5';
+      const intensityMult = parseFloat(weekData.intensitymult) || 1;
+      const volumeMult = parseFloat(weekData.volumemult) || 1;
+      const defaultAdjustedSets = Math.max(1, Math.round(baseSets * volumeMult));
+      const adjustedSets = dynamicSetCounts[index] || defaultAdjustedSets;
+
+      let warmupHtml = '';
+      const tmVal = parseFloat(exObj.trainingmax);
+      const baseWorkingWeight = (!isNaN(tmVal) && tmVal > 0 && !isRepsOnly) ? Math.round((tmVal * intensityMult) / 5) * 5 : 0;
+
+      if (baseWorkingWeight > 0 && isMainLiftCard) {
+        const w40 = Math.round((baseWorkingWeight * 0.40) / 5) * 5;
+        const w60 = Math.round((baseWorkingWeight * 0.60) / 5) * 5;
+        const w75 = Math.round((baseWorkingWeight * 0.75) / 5) * 5;
+        const w85 = Math.round((baseWorkingWeight * 0.85) / 5) * 5;
+        warmupHtml = `
+          <details class="bg-slate-950/60 p-2 rounded-lg border border-slate-800 text-[11px] text-slate-300">
+            <summary class="cursor-pointer font-bold text-amber-500 text-[10px] uppercase tracking-wider">🏋️‍♂️ View Warmup Ramp Sets</summary>
+            <div class="grid grid-cols-4 gap-1 mt-2 text-center font-mono">
+              <div><span class="text-slate-500 block text-[7px]">SET 1 (40%)</span>${w40} lbs × 5</div>
+              <div><span class="text-slate-500 block text-[7px]">SET 2 (60%)</span>${w60} lbs × 5</div>
+              <div><span class="text-slate-500 block text-[7px]">SET 3 (75%)</span>${w75} lbs × 3</div>
+              <div><span class="text-slate-500 block text-[7px]">SET 4 (85%)</span>${w85} lbs × 2</div>
+            </div>
+          </details>
+        `;
+      }
+
+      let setsInputsHtml = '';
+      for (let s = 1; s <= adjustedSets; s++) {
+        const isAmrapSet = (state.weekNum === 3) && isMainLiftCard && (s === adjustedSets);
+        const setLabel = isAmrapSet ? `Set ${s} <span class="text-amber-400 font-bold">(AMRAP)</span>` : `Set ${s}`;
+        
+        let setCalculatedWeight = baseWorkingWeight;
+        if (state.weekNum === 2 && baseWorkingWeight > 0 && adjustedSets > 1) {
+          const stepFrac = 0.05 * (s - 1) / Math.max(1, (adjustedSets - 1));
+          const adjustedMult = intensityMult - 0.05 + stepFrac;
+          setCalculatedWeight = Math.round((tmVal * adjustedMult) / 5) * 5;
+        }
+
+        const plateBtnHtml = (isBarbell && !isRepsOnly)
+          ? `<button type="button" onclick="openPlateModalForInput('weight_${index}_${s}')" class="text-xs p-1 hover:bg-slate-700 rounded transition-all" title="Calculate Plates">🏋️‍♂️</button>` 
+          : '';
+
+        const amrapBlurFn = isAmrapSet ? `onblur="checkAmrapPerformance('${itemExId}', 'weight_${index}_${s}', 'reps_${index}_${s}')"` : '';
+
+        const weightInputHtml = isRepsOnly ? `
+          <input type="hidden" value="0" id="weight_${index}_${s}">
+          <span class="col-span-4 text-center font-mono text-slate-500 text-[10px]">Bodyweight</span>
+        ` : `
+          <div class="col-span-4 flex items-center space-x-1">
+            <input type="number" value="${setCalculatedWeight || ''}" placeholder="Lbs" id="weight_${index}_${s}" class="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-center text-slate-100 font-bold focus:border-amber-500">
+            ${plateBtnHtml}
+          </div>
+        `;
+
+        setsInputsHtml += `
+          <div class="grid grid-cols-12 gap-2 items-center text-xs" data-is-amrap="${isAmrapSet}">
+            <div class="col-span-1 flex justify-center">
+              <input type="checkbox" onchange="handleSetCheck(this, ${isMainLiftCard}, ${isFinalInSuperset})" class="w-4 h-4 accent-amber-500 rounded cursor-pointer">
+            </div>
+            <span class="col-span-4 text-slate-400 font-mono text-[11px]">${setLabel}</span>
+            ${weightInputHtml}
+            <input type="text" value="${baseReps}" placeholder="${baseReps}" id="reps_${index}_${s}" ${amrapBlurFn} class="col-span-3 bg-slate-950 border border-slate-700 rounded p-1.5 text-center text-slate-100 focus:border-amber-500">
+          </div>
+        `;
+      }
+
+      const cleanRoleText = roleBadgeText.replace(/Superset\s*/gi, '').trim();
+      const modifyBtnHtml = !isMainLiftCard ? `<button onclick="openSubExerciseModal(${item.id})" class="text-[9px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 px-2.5 py-1 rounded-lg font-extrabold uppercase tracking-wider transition-all shadow-sm ml-1">Modify</button>` : '';
+
+      const canRemoveSet = adjustedSets > defaultAdjustedSets;
+      const setButtonsHtml = `
+        <div class="grid grid-cols-2 gap-2 mt-2">
+          <button onclick="addExtraSet(${index})" class="bg-slate-950 hover:bg-slate-800 border border-slate-800 text-amber-400 font-bold text-[10px] py-1.5 rounded-lg uppercase tracking-wider transition-all">+ Add Set</button>
+          ${canRemoveSet ? `<button onclick="removeExtraSet(${index})" class="bg-slate-950 hover:bg-slate-800 border border-slate-800 text-red-400 font-bold text-[10px] py-1.5 rounded-lg uppercase tracking-wider transition-all">- Remove Set</button>` : ''}
+        </div>
+      `;
+
+      return `
+        <div class="border rounded-xl p-4 space-y-3 shadow-md ${cardClass}" data-ex-id="${itemExId}">
+          <div class="flex justify-between items-start border-b border-slate-800/80 pb-2">
+            <div>
+              <h3 class="font-bold text-slate-100 text-sm">${exName}</h3>
+              ${coachingNotes ? `<p class="text-[11px] text-amber-500/90 font-mono mt-0.5">${coachingNotes}</p>` : ''}
+            </div>
+            <div class="flex items-center space-x-1">
+              ${cleanRoleText ? `<span class="text-[10px] bg-slate-800 text-amber-400 border border-slate-700 px-2.5 py-1 rounded-lg font-bold uppercase">${cleanRoleText}</span>` : ''}
+              ${modifyBtnHtml}
+            </div>
+          </div>
+          ${warmupHtml}
+          <div class="space-y-1.5 pt-1">
+            <div class="grid grid-cols-12 gap-2 text-[10px] text-slate-400 font-semibold text-center mb-1">
+              <span class="col-span-1">✓</span>
+              <span class="col-span-4 text-left pl-1">SET</span>
+              <span class="col-span-4">${isRepsOnly ? 'LOAD TYPE' : 'LOAD (LBS)'}</span>
+              <span class="col-span-3">REPS</span>
+            </div>
+            ${setsInputsHtml}
+            ${setButtonsHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    async function checkAmrapPerformance(exId, weightInputId, repsInputId) {
+      const weightVal = parseFloat(document.getElementById(weightInputId)?.value) || 0;
+      const repsVal = parseInt(document.getElementById(repsInputId)?.value) || 0;
+      if (weightVal <= 0 || repsVal <= 0) return;
+
+      const est1RM = Math.round(weightVal * (1 + repsVal / 30));
+      const exObj = (db.exercises || []).find(e => String(e.exerciseid).toUpperCase() === String(exId).toUpperCase());
+      if (!exObj) return;
+
+      if (est1RM > (exObj.est1rm || 0)) {
+        if (confirm(`🔥 New PR Estimated 1RM for ${exObj.exercisename}! Estimated 1RM is ${est1RM} lbs (previous was ${exObj.est1rm || 0} lbs). Update your Training Max accordingly?`)) {
+          const newTm = Math.round(est1RM * 0.85 / 5) * 5;
+          exObj.est1rm = est1RM;
+          exObj.trainingmax = newTm;
+          await localDb.exercises.where('exerciseid').equalsIgnoreCase(exId).modify({ est1rm: est1RM, trainingmax: newTm });
+          alert(`Success! Updated Training Max to ${newTm} lbs (Est 1RM: ${est1RM} lbs).`);
+          renderWorkoutDay();
+        }
+      }
+    }
+
+    function openProfileModal() {
+      renderCustomCyclesManager();
+      document.getElementById('modal-profile').classList.remove('hidden');
+    }
+
+    function closeProfileModal() { document.getElementById('modal-profile').classList.add('hidden'); }
+
+    function changeCalendarMonth(delta) {
+      state.calMonth += delta;
+      if (state.calMonth < 0) { state.calMonth = 11; state.calYear -= 1; }
+      else if (state.calMonth > 11) { state.calMonth = 0; state.calYear += 1; }
+      renderCalendarHistory();
+    }
+
+    async function renderCalendarHistory() {
+      const calendarGrid = document.getElementById('calendar-grid');
+      const monthLabel = document.getElementById('calendar-month-label');
+      if (!calendarGrid) return;
+
+      const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      monthLabel.innerText = `${months[state.calMonth]} ${state.calYear}`;
+
+      const logs = await localDb.workoutLogs.toArray();
+      const logsByDate = {};
+      logs.forEach(l => { logsByDate[l.datestr] = l; });
+
+      const firstDay = new Date(state.calYear, state.calMonth, 1);
+      const daysInMonth = new Date(state.calYear, state.calMonth + 1, 0).getDate();
+      const startDayOffset = firstDay.getDay();
+
+      let gridHtml = '';
+      for (let i = 0; i < startDayOffset; i++) {
+        gridHtml += `<div class="h-11 rounded bg-slate-950/40"></div>`;
+      }
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dStr = `${state.calYear}-${String(state.calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const hasLog = logsByDate[dStr];
+
+        let weekDayTag = '';
+        if (hasLog) {
+          const wNum = hasLog.weeknum || 1;
+          const dId = (hasLog.templateid || 'D1').replace('DAY_', 'D');
+          weekDayTag = `W${wNum}:${dId}`;
+        }
+
+        const activeCls = hasLog 
+          ? 'bg-amber-500 text-slate-950 font-black cursor-pointer shadow-md shadow-amber-500/20 ring-1 ring-amber-400' 
+          : 'bg-slate-950 text-slate-400 border border-slate-800/80';
+
+        gridHtml += `
+          <button onclick="inspectDateLog('${dStr}')" class="h-11 rounded-lg flex flex-col items-center justify-between p-1 text-[11px] font-mono transition-all hover:scale-105 ${activeCls}">
+            <span class="self-start text-[9px]">${d}</span>
+            ${hasLog ? `<span class="text-[8px] font-extrabold uppercase bg-slate-950 text-amber-400 px-1 rounded">${weekDayTag}</span>` : ''}
+          </button>
+        `;
+      }
+      calendarGrid.innerHTML = gridHtml;
+    }
+
+    async function inspectDateLog(dateStr) {
+      const detailCard = document.getElementById('history-detail-card');
+      const log = await localDb.workoutLogs.where('datestr').equals(dateStr).first();
+
+      if (!log) {
+        detailCard.innerHTML = `<p class="text-xs text-slate-400 text-center py-2 font-mono">No workout logged for ${dateStr}.</p>`;
+        return;
+      }
+
+      const cycleName = (log.cycleid || '').replace('CYCLE_', '');
+      const dayNotation = (log.templateid || '').replace('DAY_', 'Day ');
+      const notesText = log.notes ? log.notes : 'No notes recorded.';
+
+      detailCard.innerHTML = `
+        <div class="space-y-2 text-xs">
+          <div class="flex justify-between items-center border-b border-slate-800 pb-1.5">
+            <span class="font-bold text-amber-400 uppercase tracking-wider">${dateStr} — ${cycleName} W${log.weeknum} (${dayNotation})</span>
+            <div class="space-x-2">
+              <button onclick="openEditModal('${log.workoutid}')" class="text-blue-400 font-bold hover:underline">Edit</button>
+              <button onclick="deleteWorkoutSession('${log.workoutid}')" class="text-red-400 font-bold hover:underline">Delete</button>
+            </div>
+          </div>
+          <p class="text-slate-300 font-mono text-[11px]">Duration: ${log.durationmin} mins | Notes: "${notesText}"</p>
+        </div>
+      `;
+    }
+
+    async function deleteWorkoutSession(workoutId) {
+      if (!confirm('Are you sure you want to delete this workout session?')) return;
+      await localDb.workoutLogs.where('workoutid').equals(workoutId).delete();
+      alert('Workout session deleted.');
+      document.getElementById('history-detail-card').innerHTML = `<p class="text-xs text-slate-400 text-center py-2 font-mono">Select a logged date above to view session summary.</p>`;
+      renderCalendarHistory();
+    }
+
+    async function openEditModal(workoutId) {
+      const log = await localDb.workoutLogs.where('workoutid').equals(workoutId).first();
+      if (!log) return;
+
+      document.getElementById('edit-workout-id').value = log.workoutid;
+      document.getElementById('edit-date').value = log.datestr;
+      document.getElementById('edit-cycle').value = log.cycleid;
+      document.getElementById('edit-week').value = log.weeknum;
+      document.getElementById('edit-day').value = log.templateid;
+      document.getElementById('edit-notes').value = log.notes || '';
+
+      document.getElementById('modal-edit-session').classList.remove('hidden');
+    }
+
+    function closeEditModal() { document.getElementById('modal-edit-session').classList.add('hidden'); }
+
+    async function submitEditSession() {
+      const workoutId = document.getElementById('edit-workout-id').value;
+      const datestr = document.getElementById('edit-date').value;
+      const cycleid = document.getElementById('edit-cycle').value;
+      const weeknum = parseInt(document.getElementById('edit-week').value) || 1;
+      const templateid = document.getElementById('edit-day').value;
+      const notes = document.getElementById('edit-notes').value.trim();
+
+      if (!datestr) { alert('Please enter a valid date.'); return; }
+
+      await localDb.workoutLogs.where('workoutid').equals(workoutId).modify({
+        datestr: datestr, cycleid: cycleid, weeknum: weeknum, templateid: templateid, notes: notes
+      });
+
+      closeEditModal();
+      alert('Session metadata updated successfully!');
+      renderCalendarHistory();
+      inspectDateLog(datestr);
+    }
+
+    function renderLibrary() {
+      const container = document.getElementById('library-container');
+      if (!container) return;
+      const search = (document.getElementById('lib-search')?.value || '').toLowerCase();
+      const catFilter = document.getElementById('lib-cat-filter')?.value || 'ALL';
+
+      const filtered = (db.exercises || []).filter(ex => {
+        const nameMatch = (ex.exercisename || '').toLowerCase().includes(search);
+        const catMatch = catFilter === 'ALL' || (ex.category || '') === catFilter;
+        return nameMatch && catMatch;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<p class="text-xs text-slate-400 p-2">No matching exercises found.</p>';
+        return;
+      }
+
+      container.innerHTML = filtered.map((ex) => {
+        const isRepsOnly = ex.metrictype === 'reps';
+        return `
+          <div class="bg-slate-900 border border-slate-800 p-2.5 rounded-lg flex items-center justify-between space-x-2 shadow-md">
+            <div class="flex-1 min-w-0">
+              <h4 class="font-bold text-slate-200 text-xs truncate">${ex.exercisename}</h4>
+              <span class="text-[9px] text-amber-500 font-mono block truncate">${ex.category || 'General'} — <span class="text-slate-400 uppercase">${isRepsOnly ? 'Bodyweight / Reps' : 'Loaded'}</span></span>
+            </div>
+            ${isRepsOnly ? `
+              <span class="text-[10px] font-mono text-slate-400 font-bold bg-slate-950 px-2.5 py-1 rounded border border-slate-800">REPS ONLY</span>
+            ` : `
+              <div class="flex items-center space-x-1.5">
+                <span class="text-[10px] text-slate-400 font-mono">TM:</span>
+                <input type="number" value="${ex.trainingmax || 0}" id="lib_tm_${ex.exerciseid}" class="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-xs text-slate-100 font-mono text-center focus:border-amber-500">
+                <button onclick="saveLibraryTm('${ex.exerciseid}')" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-[9px] px-2 py-1 rounded shadow-sm">SAVE</button>
+              </div>
+            `}
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function saveLibraryTm(exId) {
+      const input = document.getElementById(`lib_tm_${exId}`);
+      if (!input) return;
+      const newTm = parseFloat(input.value) || 0;
+      await localDb.exercises.where('exerciseid').equalsIgnoreCase(exId).modify({ trainingmax: newTm });
+      const ex = db.exercises.find(e => String(e.exerciseid).toUpperCase() === String(exId).toUpperCase());
+      if (ex) ex.trainingmax = newTm;
+      alert(`Updated TM for ${exId} to ${newTm} lbs`);
+    }
+
+    function openAddExerciseModal() { 
+      document.getElementById('new-ex-metric').onchange = (e) => {
+        const isReps = e.target.value === 'reps';
+        document.getElementById('new-ex-tm-wrapper').style.display = isReps ? 'none' : 'block';
+      };
+      document.getElementById('modal-add-exercise').classList.remove('hidden'); 
+    }
+    
+    function closeAddExerciseModal() { document.getElementById('modal-add-exercise').classList.add('hidden'); }
+
+    async function submitNewExercise() {
+      const name = document.getElementById('new-ex-name').value.trim();
+      const cat = document.getElementById('new-ex-cat').value;
+      const metricType = document.getElementById('new-ex-metric').value;
+      const tm = metricType === 'reps' ? 0 : (parseFloat(document.getElementById('new-ex-tm').value) || 0);
+      if (!name) { alert('Please enter an exercise name.'); return; }
+
+      const newId = 'EX_CUSTOM_' + Date.now();
+      const newObj = { exerciseid: newId, exercisename: name, category: cat, trainingmax: tm, est1rm: tm, metrictype: metricType };
+      await localDb.exercises.add(newObj);
+      db.exercises.push(newObj);
+      closeAddExerciseModal();
+      renderLibrary();
+      alert('Custom exercise saved!');
+    }
+
+    function openPlateModalForInput(inputId) {
+      state.activeActiveInputId = inputId;
+      const input = document.getElementById(inputId);
+      state.targetModalWeight = input ? (parseFloat(input.value) || 135) : 135;
+      document.getElementById('modal-plate-target-display').innerText = `${state.targetModalWeight} lbs`;
+      renderInventoryInputs();
+      calculatePlatesForModal(state.targetModalWeight);
+      document.getElementById('modal-plate-calc').classList.remove('hidden');
+    }
+
+    function adjustPlateTarget(amount) {
+      state.targetModalWeight = Math.max(45, state.targetModalWeight + amount);
+      document.getElementById('modal-plate-target-display').innerText = `${state.targetModalWeight} lbs`;
+      calculatePlatesForModal(state.targetModalWeight);
+      if (state.activeActiveInputId) {
+        const inp = document.getElementById(state.activeActiveInputId);
+        if (inp) inp.value = state.targetModalWeight;
+      }
+    }
+
+    function closePlateModal() { document.getElementById('modal-plate-calc').classList.add('hidden'); }
+
+    function renderInventoryInputs() {
+      const container = document.getElementById('plate-inventory-inputs');
+      if (!container) return;
+      container.innerHTML = userPlates.map(p => `
+        <div>
+          <label class="block text-[8px] font-bold text-slate-400 uppercase mb-0.5">${p.weight} lb Pairs</label>
+          <input type="number" value="${p.pairs}" onchange="updatePlatePairs(${p.weight}, this.value)" class="w-full bg-slate-900 border border-slate-700 rounded p-1 text-center font-mono font-bold text-slate-100 text-xs">
+        </div>
+      `).join('');
+    }
+
+    async function updatePlatePairs(weight, newPairs) {
+      const pairsVal = Math.max(0, parseInt(newPairs) || 0);
+      const plateObj = userPlates.find(p => p.weight === weight);
+      if (plateObj) plateObj.pairs = pairsVal;
+
+      await localDb.plateInventory.put({ weight: weight, pairs: pairsVal });
+      calculatePlatesForModal(state.targetModalWeight);
+    }
+
+    function calculatePlatesForModal(targetWeight) {
+      const barWeight = 45;
+      const rackContainer = document.getElementById('modal-plate-visual-rack');
+      const resultsContainer = document.getElementById('modal-plate-results');
+      const summaryText = document.getElementById('modal-plate-summary');
+      let weightPerSide = (targetWeight - barWeight) / 2;
+      let remainingWeight = weightPerSide;
+      const usedPlates = [];
+
+      userPlates.forEach(plate => {
+        let availablePairs = plate.pairs;
+        while (remainingWeight >= plate.weight && availablePairs > 0) {
+          usedPlates.push(plate);
+          remainingWeight = Math.round((remainingWeight - plate.weight) * 100) / 100;
+          availablePairs--;
+        }
+      });
+
+      if (usedPlates.length === 0) {
+        rackContainer.innerHTML = `<span class="text-xs text-slate-500 font-mono">Bar Only (${barWeight} lbs)</span>`;
+        resultsContainer.innerHTML = '';
+      } else {
+        rackContainer.innerHTML = usedPlates.map(p => `
+          <div class="flex flex-col items-center justify-center ${p.height} w-8 ${p.color} border rounded font-mono font-black text-[10px] shadow-sm">
+            <span>${p.weight}</span>
+          </div>
+        `).join('');
+
+        const counts = {};
+        usedPlates.forEach(p => { counts[p.weight] = (counts[p.weight] || 0) + 1; });
+        resultsContainer.innerHTML = Object.keys(counts).sort((a,b)=>b-a).map(w => `
+          <span class="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-slate-950 border border-slate-800 text-slate-200">${counts[w]}× ${w} lb</span>
+        `).join('');
+      }
+      summaryText.innerText = `${weightPerSide} lbs per side`;
+    }
+
+    async function saveSession() {
+      const btn = document.getElementById('btn-save-session');
+      btn.disabled = true;
+      btn.innerText = 'SAVING SESSION...';
+
+      const notesVal = document.getElementById('session-notes')?.value.trim() || '';
+      const workoutId = 'LOG_' + new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+      const durationMin = Math.max(1, Math.round(sessionSecondsElapsed / 60));
+
+      await localDb.workoutLogs.add({
+        workoutid: workoutId,
+        datestr: new Date().toISOString().split('T')[0],
+        cycleid: state.cycleId,
+        weeknum: state.weekNum,
+        templateid: state.dayId,
+        totalvolume: 0,
+        durationmin: durationMin,
+        notes: notesVal
+      });
+
+      alert(`Workout logged successfully! (${durationMin} min duration)`);
+      document.getElementById('session-notes').value = '';
+      btn.innerText = 'SESSION LOGGED!';
+      btn.className = 'w-full bg-emerald-500 text-slate-950 font-black py-3 rounded-xl shadow-lg text-sm uppercase tracking-wider';
+
+      const maxWeeks = getActiveCycleWeekCount();
+      let nextDayNum = parseInt(String(state.dayId || '').replace(/[^0-9]/g, '')) + 1;
+      let nextWeek = state.weekNum;
+
+      if (nextDayNum > 6) {
+        nextDayNum = 1;
+        nextWeek++;
+        if (nextWeek > maxWeeks) nextWeek = 1;
+      }
+      state.weekNum = nextWeek;
+      state.dayId = `DAY_${nextDayNum}`;
+
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerText = 'LOG COMPLETED SESSION';
+        btn.className = 'w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-3 rounded-xl shadow-lg transition-colors text-sm uppercase tracking-wider';
+        renderWeekButtons();
+        renderDayButtons();
+        renderWorkoutDay();
+      }, 1500);
+    }
+  </script>
+</body>
+</html>
