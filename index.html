@@ -435,21 +435,29 @@
     }
 
     window.addEventListener('DOMContentLoaded', async () => {
-      ['logger', 'library', 'history'].forEach(tab => {
-        const btn = document.getElementById(`nav-${tab}`);
-        if (btn) btn.addEventListener('click', (e) => { e.preventDefault(); switchTab(tab); });
-      });
-      try {
-        await seedInitialData();
-        await loadAppData();
-        startWorkoutStopwatch();
-      } catch (err) {
-        console.error('Initialization error:', err);
-      } finally {
-        const loadingOverlay = document.getElementById('loading-overlay');
-        if (loadingOverlay) loadingOverlay.classList.add('hidden');
-      }
-    });
+  // Safety Net: Force hide loading screen after 3 seconds no matter what happens
+  const safetyTimer = setTimeout(() => {
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) loadingOverlay.classList.add('hidden');
+  }, 3000);
+
+  ['logger', 'library', 'history'].forEach(tab => {
+    const btn = document.getElementById(`nav-${tab}`);
+    if (btn) btn.addEventListener('click', (e) => { e.preventDefault(); switchTab(tab); });
+  });
+
+  try {
+    await seedInitialData();
+    await loadAppData();
+    startWorkoutStopwatch();
+  } catch (err) {
+    console.error('Initialization error:', err);
+  } finally {
+    clearTimeout(safetyTimer);
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) loadingOverlay.classList.add('hidden');
+  }
+});
 
     function startWorkoutStopwatch() {
       if (stopwatchInterval) clearInterval(stopwatchInterval);
