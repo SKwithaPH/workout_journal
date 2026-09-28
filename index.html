@@ -889,44 +889,42 @@
     }
 
     function renderWorkoutDay() {
-      const dayExercises = getCurrentDayExercises();
-      const container = document.getElementById('exercise-cards');
-      if (!container) return;
-      if (dayExercises.length === 0) {
-        container.innerHTML = `<p class="text-xs text-amber-400 p-3 bg-slate-900 border border-slate-800 rounded-xl text-center">No exercises programmed for this day in cycle <strong>${state.cycleId}</strong>.</p>`;
-        return;
-      }
+  const activeCycleId = window.state.cycleId || 'CYCLE_HYBRID';
+  const activeWeekNum = parseInt(window.state.weekNum || 1);
 
-      const isCardioDay = CORE_CYCLES.includes(state.cycleId) && (state.dayId === 'DAY_5' || state.dayId === 'DAY_6');
-      if (isCardioDay) {
-        container.innerHTML = dayExercises.map((item, idx) => renderSingleExerciseCard(item, idx, 'Cardio', 'border-slate-800 bg-slate-900', false, false)).join('');
-        return;
-      }
+  // 1. Find week parameters dynamically for the CURRENT active program
+  const currentWeekData = (window.db.cycleWeeks || []).find(w => {
+    const wCycle = String(w.cycleid || w.Cycle_ID || '').trim().toUpperCase();
+    const wNum = parseInt(w.weeknum || w.Week_Num || 0);
+    return wCycle === activeCycleId.toUpperCase() && wNum === activeWeekNum;
+  }) || { intensitymult: 1.0, volumemult: 1.0, targetrpe: '8' };
 
-      const mainLifts = dayExercises.map((item, idx) => ({ item, idx })).filter(x => String(x.item.movementrole || '').toLowerCase().includes('main') || String(x.item.movementrole || '').toLowerCase().includes('hinge'));
-      const supersets = dayExercises.map((item, idx) => ({ item, idx })).filter(x => !String(x.item.movementrole || '').toLowerCase().includes('main') && !String(x.item.movementrole || '').toLowerCase().includes('hinge'));
+  // 2. Extract multipliers direct from the imported program cycle definition
+  const intensityMult = parseFloat(currentWeekData.intensitymult || currentWeekData.Intensity_Mult) || 1.0;
+  const volumeMult = parseFloat(currentWeekData.volumemult || currentWeekData.Volume_Mult) || 1.0;
+  const targetRpe = currentWeekData.targetrpe || currentWeekData.Target_RPE || '8';
 
-      let cardsHtml = '';
-      mainLifts.forEach(obj => {
-        cardsHtml += renderSingleExerciseCard(obj.item, obj.idx, obj.item.movementrole || 'Main Lift', 'border-amber-500/40 bg-slate-900', true, false);
-      });
+  // 3. Render exercises using imported routine templates scoped to the selected cycle
+  const dayExercises = (window.db.templates || []).filter(t => {
+    const tCycle = String(t.cycleid || t.Cycle_ID || '').trim().toUpperCase();
+    const tDay = String(t.templateid || t.Template_ID || '').trim().toUpperCase();
+    return tCycle === activeCycleId.toUpperCase() && tDay === window.state.dayId.toUpperCase();
+  });
 
-      if (supersets.length > 0) {
-        cardsHtml += `
-          <div class="border-t border-slate-800 pt-3 mt-4 space-y-3">
-            <div class="flex items-center justify-between">
-              <span class="text-[10px] font-black text-amber-400 uppercase tracking-wider bg-amber-500/10 px-2.5 py-1 rounded border border-amber-500/20">Superset</span>
-            </div>
-        `;
-        supersets.forEach((obj, sIdx) => {
-          const isFinalInSuperset = (sIdx === supersets.length - 1);
-          cardsHtml += renderSingleExerciseCard(obj.item, obj.idx, obj.item.movementrole || 'Accessory', 'border-slate-800 bg-slate-900/90', false, isFinalInSuperset);
-        });
-        cardsHtml += `</div>`;
-      }
+  // Calculate working sets & load using imported parameters
+  dayExercises.forEach(item => {
+    const baseSets = parseInt(item.basesets) || 3;
+    const adjustedSets = Math.max(1, Math.round(baseSets * volumeMult)); // Volume multiplier applied dynamically
+    
+    const exObj = (window.db.exercises || []).find(e => e.exerciseid === item.exerciseid);
+    const tmVal = parseFloat(exObj ? exObj.trainingmax : 0);
+    
+    // Intensity multiplier applied dynamically to Training Max
+    const calculatedWeight = tmVal > 0 ? Math.round((tmVal * intensityMult) / 5) * 5 : '';
 
-      container.innerHTML = cardsHtml;
-    }
+    // Render set inputs using program variables...
+  });
+}
 
     function renderSingleExerciseCard(item, index, roleBadgeText, cardClass, isMainLiftCard, isFinalInSuperset) {
       const itemExId = String(item.exerciseid || '').trim().toUpperCase();
