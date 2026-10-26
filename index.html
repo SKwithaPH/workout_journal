@@ -23,7 +23,7 @@
   <!-- Tailwind CSS Play CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Dexie.js for Client-Side Storage -->
-  <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dexie@4.0.11/dist/dexie.min.js"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased pb-24">
   
@@ -56,8 +56,11 @@
         <select id="select-cycle" onchange="onCycleChange()" class="w-full bg-slate-900 text-slate-100 border border-slate-700 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:border-amber-500 shadow-inner"></select>
       </div>
 
-      <!-- Dynamic Week Buttons -->
-      <div id="week-buttons"></div>
+      <!-- Week Selector (dropdown so programs can run any number of weeks, not just 4) -->
+      <div>
+        <label class="block text-[10px] font-bold text-slate-400 mb-1 tracking-wider uppercase">Week</label>
+        <select id="select-week" onchange="onWeekChange()" class="w-full bg-slate-900 text-slate-100 border border-slate-700 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:border-amber-500 shadow-inner"></select>
+      </div>
       <!-- Day Buttons -->
       <div class="grid grid-cols-6 gap-1.5" id="day-buttons"></div>
       
@@ -321,9 +324,41 @@
       plateInventory: 'weight, pairs'
     });
 
+    // v3: cycleWeeks is now keyed by [cycleid+weeknum] instead of weeknum alone, so every
+    // program can carry its own week-by-week intensity/volume/RPE scheme (and its own
+    // ramp-set / AMRAP-week flags) instead of sharing one global curve across all programs.
+    localDb.version(3).stores({
+      exercises: 'exerciseid, exercisename, category, trainingmax, est1rm, metrictype',
+      templates: '++id, templateid, cycleid, dayid, exerciseid, movementrole, basesets, basereps, dayname, coachingnotes',
+      cycleWeeks: '[cycleid+weeknum], cycleid, weeknum, intensitymult, volumemult, targetrpe, isrampweek, isamrapweek',
+      workoutLogs: 'workoutid, datestr, cycleid, weeknum, templateid, totalvolume, durationmin, notes',
+      setLogs: '++id, setid, workoutid, exerciseid, setnum, weightlbs, repscompleted, targetrpe, actualrpe, ispr',
+      profile: 'key, value',
+      plateInventory: 'weight, pairs'
+    }).upgrade(async (tx) => {
+      // Re-key existing week rows under the Hybrid Block program, and translate the old
+      // hardcoded "week 2 is a ramp week / week 3 is AMRAP" assumption into explicit data
+      // so it travels with the program instead of being baked into app logic.
+      const oldRows = await tx.table('cycleWeeks').toArray();
+      await tx.table('cycleWeeks').clear();
+      for (const row of oldRows) {
+        await tx.table('cycleWeeks').put({
+          cycleid: row.cycleid || 'CYCLE_HYBRID',
+          weeknum: row.weeknum,
+          intensitymult: row.intensitymult,
+          volumemult: row.volumemult,
+          targetrpe: row.targetrpe,
+          isrampweek: row.isrampweek ?? (row.weeknum === 2),
+          isamrapweek: row.isamrapweek ?? (row.weeknum === 3)
+        });
+      }
+    });
+
     const BARBELL_EXERCISES = [
       'EX_SQ_BACK', 'EX_SQ_FRONT', 'EX_BP_FLAT', 'EX_DL_CONV', 'EX_OHP',
-      'EX_CLEAN', 'EX_SNATCH', 'EX_CLEAN_JERK', 'EX_PUSH_PRESS', 'EX_THRUSTER', 'EX_BB_ROW'
+      'EX_CLEAN', 'EX_SNATCH', 'EX_CLEAN_JERK', 'EX_PUSH_PRESS', 'EX_THRUSTER', 'EX_BB_ROW',
+      'EX_POWER_JERK', 'EX_SPLIT_JERK', 'EX_POWER_CLEAN_JERK', 'EX_SNATCH_DEADLIFT',
+      'EX_CLEAN_DEADLIFT', 'EX_RDL', 'EX_SHRUGS', 'EX_MUSCLE_SNATCH', 'EX_SNATCH_PULL', 'EX_CLEAN_PULL'
     ];
 
     const CORE_CYCLES = ['CYCLE_HYBRID'];
@@ -404,10 +439,10 @@
 
       if ((await localDb.cycleWeeks.count()) === 0) {
         await localDb.cycleWeeks.bulkAdd([
-          { weeknum: 1, intensitymult: 0.90, volumemult: 1.0, targetrpe: '7 – 8' },
-          { weeknum: 2, intensitymult: 0.95, volumemult: 1.0, targetrpe: '8' },
-          { weeknum: 3, intensitymult: 1.00, volumemult: 1.0, targetrpe: '9 – 10' },
-          { weeknum: 4, intensitymult: 0.70, volumemult: 0.6, targetrpe: '6' }
+          { cycleid: 'CYCLE_HYBRID', weeknum: 1, intensitymult: 0.90, volumemult: 1.0, targetrpe: '7 – 8', isrampweek: false, isamrapweek: false },
+          { cycleid: 'CYCLE_HYBRID', weeknum: 2, intensitymult: 0.95, volumemult: 1.0, targetrpe: '8', isrampweek: true, isamrapweek: false },
+          { cycleid: 'CYCLE_HYBRID', weeknum: 3, intensitymult: 1.00, volumemult: 1.0, targetrpe: '9 – 10', isrampweek: false, isamrapweek: true },
+          { cycleid: 'CYCLE_HYBRID', weeknum: 4, intensitymult: 0.70, volumemult: 0.6, targetrpe: '6', isrampweek: false, isamrapweek: false }
         ]);
       }
     }
@@ -605,36 +640,57 @@
     }
 
     function selectWeek(w) { state.weekNum = w; dynamicSetCounts = {}; renderWeekButtons(); renderDayButtons(); renderWorkoutDay(); }
+    function onWeekChange() {
+      const sel = document.getElementById('select-week');
+      selectWeek(parseInt(sel.value) || 1);
+    }
     function selectDay(d) { state.dayId = d; dynamicSetCounts = {}; renderDayButtons(); renderWorkoutDay(); }
 
+    // A program's week count is entirely data-driven now: it's however many weeks are
+    // defined for the active cycle in cycleWeeks, not a number hardcoded per cycle id.
+    // That's what lets a program run longer (or shorter) than 4 weeks.
     function getActiveCycleWeekCount() {
-      if (state.cycleId === 'CYCLE_6WK_RECON') return 6;
-      if (CORE_CYCLES.includes(state.cycleId)) return 4;
-      
-      const cycleTemplates = (db.templates || []).filter(t => String(t.cycleid).toUpperCase() === String(state.cycleId).toUpperCase());
-      const maxDayNum = cycleTemplates.reduce((max, t) => {
-        const dNum = parseInt(String(t.templateid || t.dayid || '').replace(/[^0-9]/g, '')) || 1;
-        return Math.max(max, dNum);
-      }, 4);
-      return Math.max(4, maxDayNum);
+      const cId = String(state.cycleId).toUpperCase();
+      const weeksForCycle = (db.cycleWeeks || []).filter(w => String(w.cycleid).toUpperCase() === cId);
+      if (weeksForCycle.length > 0) {
+        return weeksForCycle.reduce((max, w) => Math.max(max, parseInt(w.weeknum) || 1), 0);
+      }
+      // No week scheme defined yet for this program (e.g. a freshly imported routine) — fall
+      // back to a plain 4-week block until the program supplies its own cycleWeeks data.
+      return 4;
+    }
+
+    // Looks up this program's own intensity/volume/RPE/ramp/AMRAP targets for a given week.
+    // Falls back to the Hybrid Block's curve, then to a neutral default, so a program that
+    // hasn't defined its own week scheme yet still renders something sane.
+    function getWeekData(weekNum) {
+      const cId = String(state.cycleId).toUpperCase();
+      let wd = (db.cycleWeeks || []).find(w => String(w.cycleid).toUpperCase() === cId && parseInt(w.weeknum) === weekNum);
+      if (!wd) {
+        wd = (db.cycleWeeks || []).find(w => String(w.cycleid).toUpperCase() === 'CYCLE_HYBRID' && parseInt(w.weeknum) === weekNum);
+      }
+      return wd || { intensitymult: 1, volumemult: 1, targetrpe: '—', isrampweek: false, isamrapweek: false };
     }
 
     function renderWeekButtons() {
-      const container = document.getElementById('week-buttons');
-      if (!container) return;
-      
-      const totalWeeks = getActiveCycleWeekCount();
-      container.className = `grid grid-cols-${Math.min(totalWeeks, 6)} gap-1.5`;
+      const select = document.getElementById('select-week');
+      if (!select) return;
 
-      let weeksHtml = '';
+      const totalWeeks = getActiveCycleWeekCount();
+      if (state.weekNum > totalWeeks) state.weekNum = totalWeeks;
+
+      let optionsHtml = '';
       for (let w = 1; w <= totalWeeks; w++) {
-        const active = w === state.weekNum;
-        const cls = active 
-          ? 'bg-amber-500 text-slate-950 font-bold border-amber-500 shadow-md shadow-amber-500/20' 
-          : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700';
-        weeksHtml += `<button onclick="selectWeek(${w})" class="py-2 text-[10px] border rounded-lg font-mono font-bold ${cls}">W${w}</button>`;
+        const wd = getWeekData(w);
+        const tagParts = [];
+        if (wd.isrampweek) tagParts.push('Ramp');
+        if (wd.isamrapweek) tagParts.push('AMRAP');
+        const tag = tagParts.length ? ` (${tagParts.join(' / ')})` : '';
+        const rpeLabel = wd.targetrpe ? ` — RPE ${wd.targetrpe}` : '';
+        optionsHtml += `<option value="${w}" ${w === state.weekNum ? 'selected' : ''}>Week ${w}${tag}${rpeLabel}</option>`;
       }
-      container.innerHTML = weeksHtml;
+      select.innerHTML = optionsHtml;
+      select.value = state.weekNum;
     }
 
     function renderDayButtons() {
@@ -853,7 +909,7 @@
     function addExtraSet(index) {
       if (!dynamicSetCounts[index]) {
         const item = getCurrentDayExercises()[index];
-        const weekData = (db.cycleWeeks || []).find(w => parseInt(w.weeknum) === state.weekNum) || { volumemult: 1 };
+        const weekData = getWeekData(state.weekNum);
         const baseSets = parseInt(item.basesets) || 3;
         const volumeMult = parseFloat(weekData.volumemult) || 1;
         dynamicSetCounts[index] = Math.max(1, Math.round(baseSets * volumeMult)) + 1;
@@ -865,7 +921,7 @@
 
     function removeExtraSet(index) {
       const item = getCurrentDayExercises()[index];
-      const weekData = (db.cycleWeeks || []).find(w => parseInt(w.weeknum) === state.weekNum) || { volumemult: 1 };
+      const weekData = getWeekData(state.weekNum);
       const baseSets = parseInt(item.basesets) || 3;
       const volumeMult = parseFloat(weekData.volumemult) || 1;
       const defaultAdjustedSets = Math.max(1, Math.round(baseSets * volumeMult));
@@ -928,6 +984,38 @@
       container.innerHTML = cardsHtml;
     }
 
+    // Reads a program's own rep/intensity target text (e.g. "10RM", "5RM", "80-90%", "70%")
+    // and suggests a load from the exercise's current estimated 1RM — Epley in reverse for
+    // rep-max targets, a straight percentage for %-based targets. Returns null for anything
+    // that isn't formula-driven (AHAP, Max, "within 10% of Monday's number", plain rep counts),
+    // since those are intentionally autoregulated and have no formula to compute from.
+    function estimateWeightForTarget(exObj, targetText) {
+      const est1rm = parseFloat(exObj && exObj.est1rm) || 0;
+      if (est1rm <= 0) return null;
+      const t = String(targetText || '').trim();
+
+      const rmMatch = t.match(/^(\d+)\s*RM$/i);
+      if (rmMatch) {
+        const reps = parseInt(rmMatch[1]);
+        if (reps <= 1) return Math.round(est1rm / 5) * 5;
+        return Math.round((est1rm / (1 + reps / 30)) / 5) * 5;
+      }
+
+      const rangeMatch = t.match(/^(\d+)\s*-\s*(\d+)\s*%$/);
+      if (rangeMatch) {
+        const pct = ((parseInt(rangeMatch[1]) + parseInt(rangeMatch[2])) / 2) / 100;
+        return Math.round((est1rm * pct) / 5) * 5;
+      }
+
+      const pctMatch = t.match(/^(\d+)\s*%$/);
+      if (pctMatch) {
+        const pct = parseInt(pctMatch[1]) / 100;
+        return Math.round((est1rm * pct) / 5) * 5;
+      }
+
+      return null;
+    }
+
     function renderSingleExerciseCard(item, index, roleBadgeText, cardClass, isMainLiftCard, isFinalInSuperset) {
       const itemExId = String(item.exerciseid || '').trim().toUpperCase();
       const exObj = (db.exercises || []).find(e => String(e.exerciseid).toUpperCase() === itemExId) || {};
@@ -939,7 +1027,7 @@
       const isCardio = isCoreBlockCardio || itemExId.startsWith('ACT_');
       const isRepsOnly = exObj.metrictype === 'reps' || (!isBarbell && (exObj.trainingmax || 0) === 0);
 
-      const weekData = (db.cycleWeeks || []).find(w => parseInt(w.weeknum) === state.weekNum) || { intensitymult: 1, volumemult: 1, targetrpe: '8' };
+      const weekData = getWeekData(state.weekNum);
 
       if (isCardio) {
         return `
@@ -975,6 +1063,11 @@
       const tmVal = parseFloat(exObj.trainingmax);
       const baseWorkingWeight = (!isNaN(tmVal) && tmVal > 0 && !isRepsOnly) ? Math.round((tmVal * intensityMult) / 5) * 5 : 0;
 
+      // When the program hasn't given this lift a trainingmax-driven % scheme (true of
+      // autoregulated rep-max work), fall back to a suggested load computed from the
+      // target text itself (basereps), using the exercise's own est1RM.
+      const suggestedWeight = (!baseWorkingWeight && !isRepsOnly) ? estimateWeightForTarget(exObj, baseReps) : null;
+
       if (baseWorkingWeight > 0 && isMainLiftCard) {
         const w40 = Math.round((baseWorkingWeight * 0.40) / 5) * 5;
         const w60 = Math.round((baseWorkingWeight * 0.60) / 5) * 5;
@@ -995,15 +1088,16 @@
 
       let setsInputsHtml = '';
       for (let s = 1; s <= adjustedSets; s++) {
-        const isAmrapSet = (state.weekNum === 3) && isMainLiftCard && (s === adjustedSets);
+        const isAmrapSet = weekData.isamrapweek && isMainLiftCard && (s === adjustedSets);
         const setLabel = isAmrapSet ? `Set ${s} <span class="text-amber-400 font-bold">(AMRAP)</span>` : `Set ${s}`;
         
-        let setCalculatedWeight = baseWorkingWeight;
-        if (state.weekNum === 2 && baseWorkingWeight > 0 && adjustedSets > 1) {
+        let setCalculatedWeight = baseWorkingWeight || suggestedWeight || 0;
+        if (weekData.isrampweek && baseWorkingWeight > 0 && adjustedSets > 1) {
           const stepFrac = 0.05 * (s - 1) / Math.max(1, (adjustedSets - 1));
           const adjustedMult = intensityMult - 0.05 + stepFrac;
           setCalculatedWeight = Math.round((tmVal * adjustedMult) / 5) * 5;
         }
+        const isEstimate = !baseWorkingWeight && !!suggestedWeight;
 
         const plateBtnHtml = (isBarbell && !isRepsOnly)
           ? `<button type="button" onclick="openPlateModalForInput('weight_${index}_${s}')" class="text-xs p-1 hover:bg-slate-700 rounded transition-all" title="Calculate Plates">🏋️‍♂️</button>` 
@@ -1016,8 +1110,9 @@
           <span class="col-span-4 text-center font-mono text-slate-500 text-[10px]">Bodyweight</span>
         ` : `
           <div class="col-span-4 flex items-center space-x-1">
-            <input type="number" value="${setCalculatedWeight || ''}" placeholder="Lbs" id="weight_${index}_${s}" class="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-center text-slate-100 font-bold focus:border-amber-500">
+            <input type="number" value="${setCalculatedWeight || ''}" placeholder="Lbs" id="weight_${index}_${s}" title="${isEstimate ? 'Estimated from your current Est 1RM for ' + baseReps + ' — adjust to what you actually hit today.' : ''}" class="w-full bg-slate-950 border ${isEstimate ? 'border-dashed border-amber-500/50' : 'border-slate-700'} rounded p-1.5 text-center text-slate-100 font-bold focus:border-amber-500">
             ${plateBtnHtml}
+            ${isEstimate ? `<span class="text-[8px] text-amber-500/80 font-mono" title="Estimated — not a fixed prescription">est.</span>` : ''}
           </div>
         `;
 
@@ -1052,6 +1147,7 @@
               ${coachingNotes ? `<p class="text-[11px] text-amber-500/90 font-mono mt-0.5">${coachingNotes}</p>` : ''}
             </div>
             <div class="flex items-center space-x-1">
+              ${(weekData.targetrpe && !isRepsOnly) ? `<span class="text-[10px] bg-slate-950 text-slate-300 border border-slate-700 px-2 py-1 rounded-lg font-mono font-bold" title="Target RPE for this week of the program">RPE ${weekData.targetrpe}</span>` : ''}
               ${cleanRoleText ? `<span class="text-[10px] bg-slate-800 text-amber-400 border border-slate-700 px-2.5 py-1 rounded-lg font-bold uppercase">${cleanRoleText}</span>` : ''}
               ${modifyBtnHtml}
             </div>
@@ -1251,10 +1347,12 @@
             ${isRepsOnly ? `
               <span class="text-[10px] font-mono text-slate-400 font-bold bg-slate-950 px-2.5 py-1 rounded border border-slate-800">REPS ONLY</span>
             ` : `
-              <div class="flex items-center space-x-1.5">
+              <div class="flex items-center space-x-1 flex-wrap justify-end">
                 <span class="text-[10px] text-slate-400 font-mono">TM:</span>
-                <input type="number" value="${ex.trainingmax || 0}" id="lib_tm_${ex.exerciseid}" class="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-1 text-xs text-slate-100 font-mono text-center focus:border-amber-500">
-                <button onclick="saveLibraryTm('${ex.exerciseid}')" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-[9px] px-2 py-1 rounded shadow-sm">SAVE</button>
+                <input type="number" value="${ex.trainingmax || 0}" id="lib_tm_${ex.exerciseid}" class="w-14 bg-slate-950 border border-slate-700 rounded px-1 py-1 text-xs text-slate-100 font-mono text-center focus:border-amber-500">
+                <span class="text-[10px] text-slate-400 font-mono">1RM:</span>
+                <input type="number" value="${ex.est1rm || 0}" id="lib_1rm_${ex.exerciseid}" title="Used to auto-suggest loads for rep-max and % targets like 10RM or 80-90%" class="w-14 bg-slate-950 border border-slate-700 rounded px-1 py-1 text-xs text-slate-100 font-mono text-center focus:border-amber-500">
+                <button onclick="saveLibraryMaxes('${ex.exerciseid}')" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-[9px] px-2 py-1 rounded shadow-sm">SAVE</button>
               </div>
             `}
           </div>
@@ -1262,14 +1360,17 @@
       }).join('');
     }
 
-    async function saveLibraryTm(exId) {
-      const input = document.getElementById(`lib_tm_${exId}`);
-      if (!input) return;
-      const newTm = parseFloat(input.value) || 0;
-      await localDb.exercises.where('exerciseid').equalsIgnoreCase(exId).modify({ trainingmax: newTm });
+    async function saveLibraryMaxes(exId) {
+      const tmInput = document.getElementById(`lib_tm_${exId}`);
+      const rmInput = document.getElementById(`lib_1rm_${exId}`);
+      if (!tmInput || !rmInput) return;
+      const newTm = parseFloat(tmInput.value) || 0;
+      const newRm = parseFloat(rmInput.value) || 0;
+      await localDb.exercises.where('exerciseid').equalsIgnoreCase(exId).modify({ trainingmax: newTm, est1rm: newRm });
       const ex = db.exercises.find(e => String(e.exerciseid).toUpperCase() === String(exId).toUpperCase());
-      if (ex) ex.trainingmax = newTm;
-      alert(`Updated TM for ${exId} to ${newTm} lbs`);
+      if (ex) { ex.trainingmax = newTm; ex.est1rm = newRm; }
+      alert(`Updated ${exId}: TM ${newTm} lbs, Est 1RM ${newRm} lbs`);
+      renderWorkoutDay();
     }
 
     function openAddExerciseModal() { 
