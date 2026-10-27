@@ -123,14 +123,25 @@
         <button onclick="closeProfileModal()" class="text-slate-400 hover:text-slate-200 text-base font-bold">✕</button>
       </div>
       <div class="space-y-3">
+        <!-- Routine & Reset Controls -->
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2">
+          <span class="text-[10px] font-black text-amber-500 uppercase tracking-wider block border-b border-slate-800 pb-1">Routine Management</span>
+          <div class="flex items-center justify-between pt-1">
+            <span class="text-[10px] text-slate-300">Reset default program</span>
+            <button onclick="resetRoutineToDefault()" class="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 font-bold px-2.5 py-1 rounded text-[10px] uppercase">Reset Defaults</button>
+          </div>
+          <div id="custom-cycles-manager" class="space-y-1 pt-1"></div>
+        </div>
+
+        <!-- Separate History Backup Controls -->
         <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2.5">
-          <span class="text-[10px] font-black text-amber-500 uppercase tracking-wider block border-b border-slate-800 pb-1">Data & Routine Management</span>
-          <p class="text-[10px] text-slate-400">Export full backups or import routine/history backups additively.</p>
+          <span class="text-[10px] font-black text-amber-500 uppercase tracking-wider block border-b border-slate-800 pb-1">History Vault (Strict History Only)</span>
+          <p class="text-[10px] text-slate-400">Export or import your logged workout history. Routine templates will remain untouched.</p>
           
           <div class="grid grid-cols-2 gap-2 pt-1">
-            <button onclick="exportDatabaseJSON()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-lg text-[10px] uppercase tracking-wider shadow-sm">Export Full Backup</button>
+            <button onclick="exportHistoryJSON()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-lg text-[10px] uppercase tracking-wider shadow-sm">Export History</button>
             <label class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2 rounded-lg text-[10px] uppercase tracking-wider text-center cursor-pointer shadow-md">
-              Import Backup <input type="file" id="import-routine-input" onchange="importRoutineAdditive(event)" accept="*" class="hidden">
+              Import History <input type="file" id="import-history-input" onchange="importHistoryOnly(event)" accept="*" class="hidden">
             </label>
           </div>
         </div>
@@ -341,7 +352,7 @@
   </nav>
 
   <script>
-    const STORAGE_KEY = 'WorkoutJournalData_v6';
+    const STORAGE_KEY = 'WorkoutJournalData_v8';
 
     const DEFAULT_DATA = {
       exercises: [
@@ -532,6 +543,52 @@
       cycleSelect.innerHTML = optionsHtml;
       if (editCycleSelect) editCycleSelect.innerHTML = optionsHtml;
       cycleSelect.value = state.cycleId;
+      renderCustomCyclesManager();
+    }
+
+    function renderCustomCyclesManager() {
+      const container = document.getElementById('custom-cycles-manager');
+      if (!container) return;
+      const uniqueCycles = [...new Set((db.templates || []).map(t => t.cycleid).filter(Boolean))];
+      const customCycles = uniqueCycles.filter(c => !CORE_CYCLES.includes(c));
+
+      let html = '';
+      if (customCycles.length > 0) {
+        html += `
+          <span class="text-[9px] font-bold text-slate-400 uppercase block pt-1">Custom Routines</span>
+          <div class="space-y-1 pt-1">
+            ${customCycles.map(cId => `
+              <div class="flex items-center justify-between bg-slate-900 border border-slate-800 px-2 py-1.5 rounded text-[10px]">
+                <span class="font-mono text-amber-400 truncate">${cId}</span>
+                <button onclick="deleteCustomCycle('${cId}')" class="bg-red-600 hover:bg-red-700 text-white font-bold px-2 py-0.5 rounded text-[9px] uppercase">Delete Routine</button>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+      container.innerHTML = html;
+    }
+
+    function resetRoutineToDefault() {
+      if (confirm('Reset current cycle templates back to default?')) {
+        db.templates = DEFAULT_DATA.templates.filter(t => t.cycleid === state.cycleId);
+        saveAppDataToStorage();
+        renderWorkoutDay();
+        alert('Routine reset successfully!');
+      }
+    }
+
+    function deleteCustomCycle(cId) {
+      if (CORE_CYCLES.includes(cId)) return;
+      if (confirm(`Delete routine ${cId}? This will remove its programming while keeping your history safe.`)) {
+        db.templates = db.templates.filter(t => t.cycleid !== cId);
+        saveAppDataToStorage();
+        state.cycleId = 'CYCLE_HYBRID';
+        updateCycleDropdownOptions();
+        renderWeekButtons();
+        renderDayButtons();
+        renderWorkoutDay();
+      }
     }
 
     function switchTab(tab) {
@@ -700,47 +757,44 @@
       renderWorkoutDay();
     }
 
-    function exportDatabaseJSON() {
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
+    function exportHistoryJSON() {
+      const historyPayload = { workoutLogs: db.workoutLogs || [] };
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(historyPayload, null, 2));
       const downloadAnchor = document.createElement('a');
       downloadAnchor.setAttribute("href", dataStr);
-      downloadAnchor.setAttribute("download", `workout_journal_backup_${new Date().toISOString().split('T')[0]}.json`);
+      downloadAnchor.setAttribute("download", `workout_history_backup_${new Date().toISOString().split('T')[0]}.json`);
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();
       downloadAnchor.remove();
     }
 
-    function importRoutineAdditive(event) {
+    function importHistoryOnly(event) {
       const file = event.target.files[0];
       if (!file) return;
       const reader = new FileReader();
       reader.onload = function(e) {
         try {
           const imported = JSON.parse(e.target.result);
-          if (imported.templates) db.templates = [...(db.templates || []), ...imported.templates];
-          if (imported.exercises) {
-            imported.exercises.forEach(ex => {
-              if (!db.exercises.some(e => e.exerciseid === ex.exerciseid)) db.exercises.push(ex);
-            });
-          }
-          if (imported.cycleWeeks) db.cycleWeeks = [...(db.cycleWeeks || []), ...imported.cycleWeeks];
-          if (imported.workoutLogs) {
+          // Strictly extract workout logs only
+          const logs = imported.workoutLogs || (Array.isArray(imported) ? imported : null);
+          if (Array.isArray(logs)) {
             if (!db.workoutLogs) db.workoutLogs = [];
-            imported.workoutLogs.forEach(log => {
-              if (!db.workoutLogs.some(l => l.workoutid === log.workoutid)) {
+            let addedCount = 0;
+            logs.forEach(log => {
+              if (log.workoutid && !db.workoutLogs.some(l => l.workoutid === log.workoutid)) {
                 db.workoutLogs.push(log);
+                addedCount++;
               }
             });
+            saveAppDataToStorage();
+            alert(`History imported successfully! (${addedCount} new sessions added)`);
+            renderCalendarHistory();
+            closeProfileModal();
+          } else {
+            alert('No valid workout logs found in file.');
           }
-          saveAppDataToStorage();
-          alert('Backup successfully imported!');
-          updateCycleDropdownOptions();
-          renderWeekButtons();
-          renderDayButtons();
-          renderWorkoutDay();
-          closeProfileModal();
         } catch (err) {
-          alert('Error parsing backup JSON file.');
+          alert('Error parsing history JSON file.');
         }
       };
       reader.readAsText(file);
@@ -779,7 +833,6 @@
         return tCycle === String(state.cycleId || '').trim().toUpperCase() && tDay === String(state.dayId).toUpperCase();
       });
 
-      // Deduplicate to ensure each unique exercise ID appears only once per day view
       const seen = new Set();
       return rawList.filter(item => {
         const key = `${item.exerciseid}_${item.movementrole || ''}`;
