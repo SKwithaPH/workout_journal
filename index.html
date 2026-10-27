@@ -341,7 +341,7 @@
   </nav>
 
   <script>
-    const STORAGE_KEY = 'WorkoutJournalData_v4';
+    const STORAGE_KEY = 'WorkoutJournalData_v5';
 
     const DEFAULT_DATA = {
       exercises: [
@@ -400,16 +400,22 @@
     };
 
     function loadAppDataFromStorage() {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_DATA));
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_DATA));
+          return JSON.parse(JSON.stringify(DEFAULT_DATA));
+        }
+        return JSON.parse(raw);
+      } catch (e) {
         return JSON.parse(JSON.stringify(DEFAULT_DATA));
       }
-      try { return JSON.parse(raw); } catch (e) { return JSON.parse(JSON.stringify(DEFAULT_DATA)); }
     }
 
     function saveAppDataToStorage() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+      } catch (e) {}
     }
 
     let db = loadAppDataFromStorage();
@@ -443,44 +449,49 @@
     const CORE_CYCLES = ['CYCLE_HYBRID'];
 
     window.addEventListener('DOMContentLoaded', () => {
-      ['logger', 'library', 'history'].forEach(tab => {
-        const btn = document.getElementById(`nav-${tab}`);
-        if (btn) btn.addEventListener('click', (e) => { e.preventDefault(); switchTab(tab); });
-      });
-
-      if (db.plateInventory) {
-        db.plateInventory.forEach(sp => {
-          const pObj = userPlates.find(up => up.weight === sp.weight);
-          if (pObj) pObj.pairs = sp.pairs;
+      try {
+        ['logger', 'library', 'history'].forEach(tab => {
+          const btn = document.getElementById(`nav-${tab}`);
+          if (btn) btn.addEventListener('click', (e) => { e.preventDefault(); switchTab(tab); });
         });
+
+        if (db.plateInventory) {
+          db.plateInventory.forEach(sp => {
+            const pObj = userPlates.find(up => up.weight === sp.weight);
+            if (pObj) pObj.pairs = sp.pairs;
+          });
+        }
+
+        const uniqueCycles = [...new Set((db.templates || []).map(t => t.cycleid).filter(Boolean))];
+        if (!uniqueCycles.includes(state.cycleId)) {
+          state.cycleId = uniqueCycles[0] || 'CYCLE_HYBRID';
+        }
+
+        const lastLog = (db.workoutLogs || []).slice(-1)[0];
+        if (lastLog) {
+          state.cycleId = lastLog.cycleid || state.cycleId;
+          const maxWeeks = getActiveCycleWeekCount();
+          let nextWeek = lastLog.weeknum || 1;
+          let nextDayNum = parseInt(String(lastLog.templateid || '').replace(/[^0-9]/g, '')) + 1;
+          if (nextDayNum > 6) { nextDayNum = 1; nextWeek++; if (nextWeek > maxWeeks) nextWeek = 1; }
+          state.weekNum = nextWeek;
+          state.dayId = `DAY_${nextDayNum}`;
+        }
+
+        updateCycleDropdownOptions();
+        renderWeekButtons();
+        renderDayButtons();
+        renderWorkoutDay();
+
+        startWorkoutStopwatch();
+        loadSessionDraft();
+      } catch (err) {
+        console.error('Initialization error:', err);
+      } finally {
+        // GUARANTEED SAFEGUARD: Always hide loading overlay
+        const loadingOverlay = document.getElementById('loading-overlay');
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
       }
-
-      const uniqueCycles = [...new Set((db.templates || []).map(t => t.cycleid).filter(Boolean))];
-      if (!uniqueCycles.includes(state.cycleId)) {
-        state.cycleId = uniqueCycles[0] || 'CYCLE_HYBRID';
-      }
-
-      const lastLog = (db.workoutLogs || []).slice(-1)[0];
-      if (lastLog) {
-        state.cycleId = lastLog.cycleid || state.cycleId;
-        const maxWeeks = getActiveCycleWeekCount();
-        let nextWeek = lastLog.weeknum || 1;
-        let nextDayNum = parseInt(String(lastLog.templateid || '').replace(/[^0-9]/g, '')) + 1;
-        if (nextDayNum > 6) { nextDayNum = 1; nextWeek++; if (nextWeek > maxWeeks) nextWeek = 1; }
-        state.weekNum = nextWeek;
-        state.dayId = `DAY_${nextDayNum}`;
-      }
-
-      updateCycleDropdownOptions();
-      renderWeekButtons();
-      renderDayButtons();
-      renderWorkoutDay();
-
-      const loadingOverlay = document.getElementById('loading-overlay');
-      if (loadingOverlay) loadingOverlay.classList.add('hidden');
-
-      startWorkoutStopwatch();
-      loadSessionDraft();
     });
 
     function startWorkoutStopwatch() {
@@ -1166,4 +1177,204 @@
         return nameMatch && catMatch;
       });
 
-      const
+      const mainLiftIds = ['EX_SQ_BACK', 'EX_SQ_FRONT', 'EX_BP_FLAT', 'EX_DL_CONV', 'EX_OHP'];
+      filtered.sort((a, b) => {
+        const aIsMain = mainLiftIds.includes(a.exerciseid);
+        const bIsMain = mainLiftIds.includes(b.exerciseid);
+        if (aIsMain && !bIsMain) return -1;
+        if (!aIsMain && bIsMain) return 1;
+        return (a.exercisename || '').localeCompare(b.exercisename || '');
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<p class="text-xs text-slate-400 p-2">No matching exercises found.</p>';
+        return;
+      }
+
+      container.innerHTML = filtered.map((ex) => {
+        const isRepsOnly = ex.metrictype === 'reps';
+        return `
+          <div class="bg-slate-900 border border-slate-800 p-2.5 rounded-lg flex items-center justify-between space-x-2 shadow-md">
+            <div class="flex-1 min-w-0">
+              <h4 class="font-bold text-slate-200 text-xs truncate">${ex.exercisename}</h4>
+              <span class="text-[9px] text-amber-500 font-mono block truncate">${ex.category || 'General'} — <span class="text-slate-400 uppercase">${isRepsOnly ? 'Reps Only' : `TM: ${ex.trainingmax || 0} | 1RM: ${ex.est1rm || 0}`}</span></span>
+            </div>
+            <button onclick="openEditExerciseModal('${ex.exerciseid}')" class="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 font-bold text-[10px] px-2.5 py-1.5 rounded-lg uppercase tracking-wider transition-all shadow-sm">Edit</button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function openEditExerciseModal(exId) {
+      const ex = (db.exercises || []).find(e => String(e.exerciseid).toUpperCase() === String(exId).toUpperCase());
+      if (!ex) return;
+      document.getElementById('edit-ex-id').value = ex.exerciseid;
+      document.getElementById('edit-ex-name').value = ex.exercisename || '';
+      document.getElementById('edit-ex-cat').value = ex.category || 'Lower Push';
+      document.getElementById('edit-ex-metric').value = ex.metrictype || 'loaded';
+      document.getElementById('edit-ex-tm').value = ex.trainingmax || 0;
+      document.getElementById('edit-ex-1rm').value = ex.est1rm || 0;
+      document.getElementById('modal-edit-exercise').classList.remove('hidden');
+    }
+
+    function closeEditExerciseModal() {
+      document.getElementById('modal-edit-exercise').classList.add('hidden');
+    }
+
+    function submitEditExercise() {
+      const exId = document.getElementById('edit-ex-id').value;
+      const name = document.getElementById('edit-ex-name').value.trim();
+      const cat = document.getElementById('edit-ex-cat').value;
+      const metric = document.getElementById('edit-ex-metric').value;
+      const tm = parseFloat(document.getElementById('edit-ex-tm').value) || 0;
+      const rm = parseFloat(document.getElementById('edit-ex-1rm').value) || 0;
+
+      if (!name) { alert('Please enter an exercise name.'); return; }
+
+      const ex = (db.exercises || []).find(e => String(e.exerciseid).toUpperCase() === String(exId).toUpperCase());
+      if (ex) {
+        ex.exercisename = name;
+        ex.category = cat;
+        ex.metrictype = metric;
+        ex.trainingmax = tm;
+        ex.est1rm = rm;
+        saveAppDataToStorage();
+      }
+
+      closeEditExerciseModal();
+      renderLibrary();
+      renderWorkoutDay();
+      alert('Exercise updated successfully!');
+    }
+
+    function openAddExerciseModal() { 
+      document.getElementById('new-ex-metric').onchange = (e) => {
+        const isReps = e.target.value === 'reps';
+        document.getElementById('new-ex-tm-wrapper').style.display = isReps ? 'none' : 'block';
+      };
+      document.getElementById('modal-add-exercise').classList.remove('hidden'); 
+    }
+    function closeAddExerciseModal() { document.getElementById('modal-add-exercise').classList.add('hidden'); }
+
+    function submitNewExercise() {
+      const name = document.getElementById('new-ex-name').value.trim();
+      const cat = document.getElementById('new-ex-cat').value;
+      const metricType = document.getElementById('new-ex-metric').value;
+      const tm = metricType === 'reps' ? 0 : (parseFloat(document.getElementById('new-ex-tm').value) || 0);
+      if (!name) { alert('Please enter an exercise name.'); return; }
+
+      const newId = 'EX_CUSTOM_' + Date.now();
+      const newObj = { exerciseid: newId, exercisename: name, category: cat, trainingmax: tm, est1rm: tm, metrictype: metricType };
+      db.exercises.push(newObj);
+      saveAppDataToStorage();
+      closeAddExerciseModal();
+      renderLibrary();
+      alert('Custom exercise saved!');
+    }
+
+    function openPlateModalForInput(inputId) {
+      state.activeActiveInputId = inputId;
+      const input = document.getElementById(inputId);
+      state.targetModalWeight = input ? (parseFloat(input.value) || 135) : 135;
+      document.getElementById('modal-plate-target-display').innerText = `${state.targetModalWeight} lbs`;
+      calculatePlatesForModal(state.targetModalWeight);
+      document.getElementById('modal-plate-calc').classList.remove('hidden');
+    }
+
+    function adjustPlateTarget(amount) {
+      state.targetModalWeight = Math.max(45, state.targetModalWeight + amount);
+      document.getElementById('modal-plate-target-display').innerText = `${state.targetModalWeight} lbs`;
+      calculatePlatesForModal(state.targetModalWeight);
+      if (state.activeActiveInputId) {
+        const inp = document.getElementById(state.activeActiveInputId);
+        if (inp) inp.value = state.targetModalWeight;
+      }
+    }
+
+    function closePlateModal() { document.getElementById('modal-plate-calc').classList.add('hidden'); }
+
+    function calculatePlatesForModal(targetWeight) {
+      const barWeight = 45;
+      const rackContainer = document.getElementById('modal-plate-visual-rack');
+      const resultsContainer = document.getElementById('modal-plate-results');
+      const summaryText = document.getElementById('modal-plate-summary');
+      let weightPerSide = (targetWeight - barWeight) / 2;
+      let remainingWeight = weightPerSide;
+      const usedPlates = [];
+
+      userPlates.forEach(plate => {
+        let availablePairs = plate.pairs;
+        while (remainingWeight >= plate.weight && availablePairs > 0) {
+          usedPlates.push(plate);
+          remainingWeight = Math.round((remainingWeight - plate.weight) * 100) / 100;
+          availablePairs--;
+        }
+      });
+
+      if (usedPlates.length === 0) {
+        rackContainer.innerHTML = `<span class="text-xs text-slate-500 font-mono">Bar Only (${barWeight} lbs)</span>`;
+        resultsContainer.innerHTML = '';
+      } else {
+        rackContainer.innerHTML = usedPlates.map(p => `
+          <div class="flex flex-col items-center justify-center ${p.height} w-8 ${p.color} border rounded font-mono font-black text-[10px] shadow-sm">
+            <span>${p.weight}</span>
+          </div>
+        `).join('');
+
+        const counts = {};
+        usedPlates.forEach(p => { counts[p.weight] = (counts[p.weight] || 0) + 1; });
+        resultsContainer.innerHTML = Object.keys(counts).sort((a,b)=>b-a).map(w => `
+          <span class="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-slate-950 border border-slate-800 text-slate-200">${counts[w]}× ${w} lb</span>
+        `).join('');
+      }
+      summaryText.innerText = `${weightPerSide} lbs per side`;
+    }
+
+    function saveSession() {
+      const btn = document.getElementById('btn-save-session');
+      btn.disabled = true;
+      btn.innerText = 'SAVING SESSION...';
+
+      const notesVal = document.getElementById('session-notes')?.value.trim() || '';
+      const workoutId = 'LOG_' + new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+      const durationMin = Math.max(1, Math.round(sessionSecondsElapsed / 60));
+
+      if (!db.workoutLogs) db.workoutLogs = [];
+      db.workoutLogs.push({
+        workoutid: workoutId,
+        datestr: new Date().toISOString().split('T')[0],
+        cycleid: state.cycleId,
+        weeknum: state.weekNum,
+        templateid: state.dayId,
+        totalvolume: 0,
+        durationmin: durationMin,
+        notes: notesVal
+      });
+      saveAppDataToStorage();
+
+      clearSessionDraft();
+      alert(`Workout logged successfully! (${durationMin} min duration)`);
+      document.getElementById('session-notes').value = '';
+      btn.innerText = 'SESSION LOGGED!';
+      btn.className = 'w-full bg-emerald-500 text-slate-950 font-black py-3 rounded-xl shadow-lg text-sm uppercase tracking-wider';
+
+      const maxWeeks = getActiveCycleWeekCount();
+      let nextDayNum = parseInt(String(state.dayId || '').replace(/[^0-9]/g, '')) + 1;
+      let nextWeek = state.weekNum;
+
+      if (nextDayNum > 6) { nextDayNum = 1; nextWeek++; if (nextWeek > maxWeeks) nextWeek = 1; }
+      state.weekNum = nextWeek;
+      state.dayId = `DAY_${nextDayNum}`;
+
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerText = 'LOG COMPLETED SESSION';
+        btn.className = 'w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-3 rounded-xl shadow-lg transition-colors text-sm uppercase tracking-wider';
+        renderWeekButtons();
+        renderDayButtons();
+        renderWorkoutDay();
+      }, 1500);
+    }
+  </script>
+</body>
+</html>
