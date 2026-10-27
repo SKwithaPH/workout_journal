@@ -125,12 +125,12 @@
       <div class="space-y-3">
         <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2.5">
           <span class="text-[10px] font-black text-amber-500 uppercase tracking-wider block border-b border-slate-800 pb-1">Data & Routine Management</span>
-          <p class="text-[10px] text-slate-400">Export full backups or add new routines additively.</p>
+          <p class="text-[10px] text-slate-400">Import/Export</p>
           
           <div class="grid grid-cols-2 gap-2 pt-1">
             <button onclick="exportDatabaseJSON()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-lg text-[10px] uppercase tracking-wider shadow-sm">Export Full Backup</button>
             <label class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2 rounded-lg text-[10px] uppercase tracking-wider text-center cursor-pointer shadow-md">
-              Import Routine <input type="file" id="import-routine-input" onchange="importRoutineAdditive(event)" accept="*" class="hidden">
+              Import File <input type="file" id="import-routine-input" onchange="importRoutineAdditive(event)" accept="*" class="hidden">
             </label>
           </div>
         </div>
@@ -776,8 +776,19 @@
             });
           }
           if (imported.cycleWeeks) db.cycleWeeks = [...(db.cycleWeeks || []), ...imported.cycleWeeks];
+          
+          // Added: Merge workout history logs without duplicates
+          if (imported.workoutLogs) {
+            if (!db.workoutLogs) db.workoutLogs = [];
+            imported.workoutLogs.forEach(log => {
+              if (!db.workoutLogs.some(l => l.workoutid === log.workoutid)) {
+                db.workoutLogs.push(log);
+              }
+            });
+          }
+
           saveAppDataToStorage();
-          alert('Routine successfully added!');
+          alert('Backup data (routines & history) successfully imported!');
           updateCycleDropdownOptions();
           renderWeekButtons();
           renderDayButtons();
