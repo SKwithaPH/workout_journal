@@ -250,8 +250,6 @@
               <option value="DAY_2">Day 2</option>
               <option value="DAY_3">Day 3</option>
               <option value="DAY_4">Day 4</option>
-              <option value="DAY_5">Day 5</option>
-              <option value="DAY_6">Day 6</option>
             </select>
           </div>
         </div>
@@ -394,8 +392,6 @@
         { id: 14, cycleid: 'CYCLE_HYBRID', templateid: 'DAY_4', dayid: 'DAY_4', dayname: 'Full Body & Aerobic Conditioning', exerciseid: 'EX_THRUSTER', basesets: 3, basereps: '8', movementrole: 'Accessory', coachingnotes: 'Seamless transition from squat dip to press.' },
         { id: 15, cycleid: 'CYCLE_HYBRID', templateid: 'DAY_4', dayid: 'DAY_4', dayname: 'Full Body & Aerobic Conditioning', exerciseid: 'EX_ROWER', basesets: 4, basereps: '500m', movementrole: 'Accessory', coachingnotes: 'Legs, body, arms drive; controlled recovery.' },
         { id: 16, cycleid: 'CYCLE_HYBRID', templateid: 'DAY_4', dayid: 'DAY_4', dayname: 'Full Body & Aerobic Conditioning', exerciseid: 'EX_ROT_SLAM', basesets: 3, basereps: '10', movementrole: 'Accessory', coachingnotes: 'Pivot back foot, rotate through thoracic spine.' },
-        { id: 17, cycleid: 'CYCLE_HYBRID', templateid: 'DAY_5', dayid: 'DAY_5', dayname: 'Base Run', exerciseid: 'ACT_RUN_ZONE2', basesets: 1, basereps: '30 min', movementrole: 'Cardio', coachingnotes: 'Keep pace strictly conversational (Zone 2).' },
-        { id: 18, cycleid: 'CYCLE_HYBRID', templateid: 'DAY_6', dayid: 'DAY_6', dayname: 'Tempo Run', exerciseid: 'ACT_RUN_TEMPO', basesets: 1, basereps: '20 min', movementrole: 'Cardio', coachingnotes: 'Comfortably hard pace (Zone 3/4).' }
       ],
       cycleWeeks: [
         { cycleid: 'CYCLE_HYBRID', weeknum: 1, intensitymult: 0.90, volumemult: 1.0, targetrpe: '7 – 8', isrampweek: false, amrapweek: false },
@@ -405,8 +401,8 @@
       ],
       workoutLogs: [],
       plateInventory: [
-        { weight: 45, pairs: 2 }, { weight: 35, pairs: 1 }, { weight: 25, pairs: 2 },
-        { weight: 15, pairs: 1 }, { weight: 10, pairs: 2 }, { weight: 5, pairs: 2 }, { weight: 2.5, pairs: 2 }
+        { weight: 45, pairs: 1 }, { weight: 35, pairs: 1 }, { weight: 25, pairs: 2 },
+        { weight: 15, pairs: 1 }, { weight: 10, pairs: 3 }, { weight: 5, pairs: 1 }, { weight: 2.5, pairs: 2 }
       ]
     };
 
@@ -656,7 +652,7 @@
       if (CORE_CYCLES.includes(state.cycleId)) {
         days = [
           { id: 'DAY_1', label: 'D1' }, { id: 'DAY_2', label: 'D2' }, { id: 'DAY_3', label: 'D3' },
-          { id: 'DAY_4', label: 'D4' }, { id: 'DAY_5', label: 'D5 (Run)' }, { id: 'DAY_6', label: 'D6 (Run)' }
+          { id: 'DAY_4', label: 'D4' }
         ];
       } else if (availableDays.length > 0) {
         days = availableDays.sort().map(dId => ({ id: dId, label: dId.replace('DAY_', 'D') }));
