@@ -131,6 +131,12 @@
             <button onclick="resetRoutineToDefault()" class="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 font-bold py-2 rounded-lg text-[10px] uppercase tracking-wider">Reset Defaults</button>
             <button onclick="openRoutineBuilderModal()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2 rounded-lg text-[10px] uppercase tracking-wider shadow-md">+ New Routine</button>
           </div>
+          <!-- Import Routine JSON Button -->
+          <div class="pt-1">
+            <label class="w-full bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 font-bold py-2 rounded-lg text-[10px] uppercase tracking-wider text-center cursor-pointer block shadow-sm">
+              📂 Import Routine JSON <input type="file" id="import-routine-input" onchange="importRoutineJSON(event)" accept=".json" class="hidden">
+            </label>
+          </div>
           <div id="custom-cycles-manager" class="space-y-1 pt-1"></div>
         </div>
 
@@ -419,7 +425,7 @@
   </nav>
 
   <script>
-    const STORAGE_KEY = 'WorkoutJournalData_v15';
+    const STORAGE_KEY = 'WorkoutJournalData_v16';
 
     const DEFAULT_DATA = {
       exercises: [
@@ -605,7 +611,7 @@
       const uniqueCycles = [...new Set((db.templates || []).map(t => t.cycleid).filter(Boolean))];
       if (uniqueCycles.length === 0) uniqueCycles.push('CYCLE_HYBRID');
 
-      const cycleLabels = { 'CYCLE_HYBRID': 'Hybrid Block' };
+      const cycleLabels = { 'CYCLE_HYBRID': 'Hybrid Block', 'CYCLE_LSUS_OLY': 'LSUS Olympic Block' };
       const optionsHtml = uniqueCycles.map(cId => {
         const label = cycleLabels[cId] || cId.replace('CYCLE_', '').replace(/_/g, ' ');
         return `<option value="${cId}">${label}</option>`;
@@ -626,7 +632,7 @@
       let html = '';
       if (customCycles.length > 0) {
         html += `
-          <span class="text-[9px] font-bold text-slate-400 uppercase block pt-1">Custom Routines</span>
+          <span class="text-[9px] font-bold text-slate-400 uppercase block pt-1">Imported & Custom Routines</span>
           <div class="space-y-1 pt-1">
             ${customCycles.map(cId => `
               <div class="flex items-center justify-between bg-slate-900 border border-slate-800 px-2 py-1.5 rounded text-[10px]">
@@ -650,9 +656,10 @@
     }
 
     function deleteCustomCycle(cId) {
-      if (CORE_CYCLES.includes(cId)) return;
+      if (CORE_CYCLES.includes(cId) && cId === 'CYCLE_HYBRID') return;
       if (confirm(`Delete routine ${cId}? This will remove its programming while keeping your history safe.`)) {
         db.templates = db.templates.filter(t => t.cycleid !== cId);
+        db.cycleWeeks = (db.cycleWeeks || []).filter(w => w.cycleid !== cId);
         saveAppDataToStorage();
         state.cycleId = 'CYCLE_HYBRID';
         updateCycleDropdownOptions();
@@ -724,11 +731,7 @@
       const availableDays = [...new Set(cycleTemplates.map(t => String(t.templateid || t.dayid || '').toUpperCase()).filter(Boolean))];
 
       let days = [];
-      if (CORE_CYCLES.includes(state.cycleId)) {
-        days = [
-          { id: 'DAY_1', label: 'D1' }, { id: 'DAY_2', label: 'D2' }, { id: 'DAY_3', label: 'D3' }, { id: 'DAY_4', label: 'D4' }
-        ];
-      } else if (availableDays.length > 0) {
+      if (availableDays.length > 0) {
         days = availableDays.sort().map(dId => ({ id: dId, label: dId.replace('DAY_', 'D') }));
       } else {
         days = [{ id: 'DAY_1', label: 'D1' }, { id: 'DAY_2', label: 'D2' }, { id: 'DAY_3', label: 'D3' }, { id: 'DAY_4', label: 'D4' }];
@@ -855,6 +858,61 @@
       saveAppDataToStorage();
       closeSubExerciseModal();
       renderWorkoutDay();
+    }
+
+    function importRoutineJSON(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const routine = JSON.parse(e.target.result);
+          if (!routine.cycleid || !routine.templates || !Array.isArray(routine.templates)) {
+            alert('Invalid routine JSON format. Must contain cycleid and templates array.');
+            return;
+          }
+
+          const cId = routine.cycleid;
+          if (routine.exercises && Array.isArray(routine.exercises)) {
+            if (!db.exercises) db.exercises = [];
+            routine.exercises.forEach(newEx => {
+              if (!db.exercises.some(ex => ex.exerciseid === newEx.exerciseid)) {
+                db.exercises.push(newEx);
+              }
+            });
+          }
+
+          if (routine.cycleWeeks && Array.isArray(routine.cycleWeeks)) {
+            if (!db.cycleWeeks) db.cycleWeeks = [];
+            db.cycleWeeks = db.cycleWeeks.filter(w => w.cycleid !== cId);
+            routine.cycleWeeks.forEach(w => db.cycleWeeks.push(w));
+          } else {
+            if (!db.cycleWeeks) db.cycleWeeks = [];
+            db.cycleWeeks = db.cycleWeeks.filter(w => w.cycleid !== cId);
+            for (let w = 1; w <= 10; w++) {
+              db.cycleWeeks.push({ cycleid: cId, weeknum: w, intensitymult: 0.8 + (w * 0.02), volumemult: 1.0, targetrpe: '8', isrampweek: w%3===0, amrapweek: w%3===0 });
+            }
+          }
+
+          if (!db.templates) db.templates = [];
+          db.templates = db.templates.filter(t => t.cycleid !== cId);
+          routine.templates.forEach(t => db.templates.push(t));
+
+          saveAppDataToStorage();
+          state.cycleId = cId;
+          state.weekNum = 1;
+          state.dayId = 'DAY_1';
+          updateCycleDropdownOptions();
+          renderWeekButtons();
+          renderDayButtons();
+          renderWorkoutDay();
+          closeProfileModal();
+          alert(`Successfully imported routine: ${routine.cyclename || cId}!`);
+        } catch (err) {
+          alert('Error parsing routine JSON file.');
+        }
+      };
+      reader.readAsText(file);
     }
 
     function exportHistoryJSON() {
@@ -1453,7 +1511,7 @@
         return nameMatch && catMatch;
       });
 
-      const mainLiftIds = ['EX_SQ_BACK', 'EX_SQ_FRONT', 'EX_BP_FLAT', 'EX_DL_CONV', 'EX_OHP'];
+      const mainLiftIds = ['EX_SQ_BACK', 'EX_SQ_FRONT', 'EX_BP_FLAT', 'EX_DL_CONV', 'EX_OHP', 'EX_LSUS_SNATCH', 'EX_LSUS_CLEAN_JERK'];
       filtered.sort((a, b) => {
         const aIsMain = mainLiftIds.includes(a.exerciseid);
         const bIsMain = mainLiftIds.includes(b.exerciseid);
@@ -1584,7 +1642,7 @@
         nextDayNum = 1;
         nextWeek++;
         if (nextWeek > maxWeeks) {
-          nextWeek = 1; // Automatically loops back to Week 1 Day 1 upon cycle completion!
+          nextWeek = 1;
         }
       }
       state.weekNum = nextWeek;
