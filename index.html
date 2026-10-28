@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<link rel="manifest" href="manifest.json">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Workout Journal</title>
@@ -10,6 +9,7 @@
   <meta name="theme-color" content="#0f172a">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.json">
   
   <!-- Tailwind CSS Play CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -125,20 +125,22 @@
       </div>
       <div class="space-y-3">
         <!-- Routine & Reset Controls -->
-        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2">
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2.5">
           <span class="text-[10px] font-black text-amber-500 uppercase tracking-wider block border-b border-slate-800 pb-1">Routine Management</span>
-          <div class="flex items-center justify-between pt-1">
-            <span class="text-[10px] text-slate-300">Reset default program</span>
-            <button onclick="resetRoutineToDefault()" class="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 font-bold px-2.5 py-1 rounded text-[10px] uppercase">Reset Defaults</button>
+          <p class="text-[10px] text-slate-400">Import new routines additively or reset default templates.</p>
+          <div class="grid grid-cols-2 gap-2 pt-1">
+            <button onclick="resetRoutineToDefault()" class="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 font-bold py-2 rounded-lg text-[10px] uppercase tracking-wider">Reset Defaults</button>
+            <label class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2 rounded-lg text-[10px] uppercase tracking-wider text-center cursor-pointer shadow-md">
+              Import Routine <input type="file" id="import-routine-input" onchange="importRoutineAdditive(event)" accept="*" class="hidden">
+            </label>
           </div>
           <div id="custom-cycles-manager" class="space-y-1 pt-1"></div>
         </div>
 
-        <!-- Separate History Backup Controls -->
+        <!-- History Vault Controls -->
         <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2.5">
           <span class="text-[10px] font-black text-amber-500 uppercase tracking-wider block border-b border-slate-800 pb-1">History Vault (Strict History Only)</span>
-          <p class="text-[10px] text-slate-400">Export or import your logged workout history. Routine templates will remain untouched.</p>
-          
+          <p class="text-[10px] text-slate-400">Export or import logged workout history independently.</p>
           <div class="grid grid-cols-2 gap-2 pt-1">
             <button onclick="exportHistoryJSON()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2 rounded-lg text-[10px] uppercase tracking-wider shadow-sm">Export History</button>
             <label class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2 rounded-lg text-[10px] uppercase tracking-wider text-center cursor-pointer shadow-md">
@@ -251,6 +253,8 @@
               <option value="DAY_2">Day 2</option>
               <option value="DAY_3">Day 3</option>
               <option value="DAY_4">Day 4</option>
+              <option value="DAY_5">Day 5</option>
+              <option value="DAY_6">Day 6</option>
             </select>
           </div>
         </div>
@@ -351,7 +355,7 @@
   </nav>
 
   <script>
-    const STORAGE_KEY = 'WorkoutJournalData_v8';
+    const STORAGE_KEY = 'WorkoutJournalData_v9';
 
     const DEFAULT_DATA = {
       exercises: [
@@ -393,6 +397,8 @@
         { id: 14, cycleid: 'CYCLE_HYBRID', templateid: 'DAY_4', dayid: 'DAY_4', dayname: 'Full Body & Aerobic Conditioning', exerciseid: 'EX_THRUSTER', basesets: 3, basereps: '8', movementrole: 'Accessory', coachingnotes: 'Seamless transition from squat dip to press.' },
         { id: 15, cycleid: 'CYCLE_HYBRID', templateid: 'DAY_4', dayid: 'DAY_4', dayname: 'Full Body & Aerobic Conditioning', exerciseid: 'EX_ROWER', basesets: 4, basereps: '500m', movementrole: 'Accessory', coachingnotes: 'Legs, body, arms drive; controlled recovery.' },
         { id: 16, cycleid: 'CYCLE_HYBRID', templateid: 'DAY_4', dayid: 'DAY_4', dayname: 'Full Body & Aerobic Conditioning', exerciseid: 'EX_ROT_SLAM', basesets: 3, basereps: '10', movementrole: 'Accessory', coachingnotes: 'Pivot back foot, rotate through thoracic spine.' },
+        { id: 17, cycleid: 'CYCLE_HYBRID', templateid: 'DAY_5', dayid: 'DAY_5', dayname: 'Base Run', exerciseid: 'ACT_RUN_ZONE2', basesets: 1, basereps: '30 min', movementrole: 'Cardio', coachingnotes: 'Keep pace strictly conversational (Zone 2).' },
+        { id: 18, cycleid: 'CYCLE_HYBRID', templateid: 'DAY_6', dayid: 'DAY_6', dayname: 'Tempo Run', exerciseid: 'ACT_RUN_TEMPO', basesets: 1, basereps: '20 min', movementrole: 'Cardio', coachingnotes: 'Comfortably hard pace (Zone 3/4).' }
       ],
       cycleWeeks: [
         { cycleid: 'CYCLE_HYBRID', weeknum: 1, intensitymult: 0.90, volumemult: 1.0, targetrpe: '7 – 8', isrampweek: false, amrapweek: false },
@@ -402,8 +408,8 @@
       ],
       workoutLogs: [],
       plateInventory: [
-        { weight: 45, pairs: 1 }, { weight: 35, pairs: 1 }, { weight: 25, pairs: 2 },
-        { weight: 15, pairs: 1 }, { weight: 10, pairs: 3 }, { weight: 5, pairs: 1 }, { weight: 2.5, pairs: 2 }
+        { weight: 45, pairs: 2 }, { weight: 35, pairs: 1 }, { weight: 25, pairs: 2 },
+        { weight: 15, pairs: 1 }, { weight: 10, pairs: 2 }, { weight: 5, pairs: 2 }, { weight: 2.5, pairs: 2 }
       ]
     };
 
@@ -653,7 +659,7 @@
       if (CORE_CYCLES.includes(state.cycleId)) {
         days = [
           { id: 'DAY_1', label: 'D1' }, { id: 'DAY_2', label: 'D2' }, { id: 'DAY_3', label: 'D3' },
-          { id: 'DAY_4', label: 'D4' }
+          { id: 'DAY_4', label: 'D4' }, { id: 'DAY_5', label: 'D5 (Run)' }, { id: 'DAY_6', label: 'D6 (Run)' }
         ];
       } else if (availableDays.length > 0) {
         days = availableDays.sort().map(dId => ({ id: dId, label: dId.replace('DAY_', 'D') }));
@@ -772,7 +778,6 @@
       reader.onload = function(e) {
         try {
           const imported = JSON.parse(e.target.result);
-          // Strictly extract workout logs only
           const logs = imported.workoutLogs || (Array.isArray(imported) ? imported : null);
           if (Array.isArray(logs)) {
             if (!db.workoutLogs) db.workoutLogs = [];
@@ -792,6 +797,54 @@
           }
         } catch (err) {
           alert('Error parsing history JSON file.');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function importRoutineAdditive(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (imported.templates) {
+            // Merge templates cleanly without creating duplicates
+            if (!db.templates) db.templates = [];
+            imported.templates.forEach(impT => {
+              const exists = db.templates.some(existing => 
+                String(existing.cycleid).toUpperCase() === String(impT.cycleid).toUpperCase() &&
+                String(existing.templateid || existing.dayid).toUpperCase() === String(impT.templateid || impT.dayid).toUpperCase() &&
+                String(existing.exerciseid).toUpperCase() === String(impT.exerciseid).toUpperCase()
+              );
+              if (!exists) {
+                db.templates.push(impT);
+              }
+            });
+          }
+          if (imported.exercises) {
+            imported.exercises.forEach(ex => {
+              if (!db.exercises.some(e => e.exerciseid === ex.exerciseid)) db.exercises.push(ex);
+            });
+          }
+          if (imported.cycleWeeks) {
+            if (!db.cycleWeeks) db.cycleWeeks = [];
+            imported.cycleWeeks.forEach(cw => {
+              if (!db.cycleWeeks.some(w => w.cycleid === cw.cycleid && w.weeknum === cw.weeknum)) {
+                db.cycleWeeks.push(cw);
+              }
+            });
+          }
+          saveAppDataToStorage();
+          alert('Routine successfully imported!');
+          updateCycleDropdownOptions();
+          renderWeekButtons();
+          renderDayButtons();
+          renderWorkoutDay();
+          closeProfileModal();
+        } catch (err) {
+          alert('Error parsing routine JSON file.');
         }
       };
       reader.readAsText(file);
@@ -1389,11 +1442,6 @@
         renderWorkoutDay();
       }, 1500);
     }
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW registration failed: ', err));
-    });
-  }
   </script>
 </body>
 </html>
